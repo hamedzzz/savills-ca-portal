@@ -66,10 +66,7 @@ export default function Portal() {
     const [p, r] = await Promise.all([apiFetch("/properties"), apiFetch("/reports")]);
     if (p) setProperties(p);
     if (r) setReports(r);
-    if (isAdmin) {
-      const u = await apiFetch("/users"); if (u) setUsers(u);
-      const a = await apiFetch("/properties/archived"); if (a) setArchivedProps(a);
-    }
+    if (isAdmin) { const u = await apiFetch("/users"); if (u) setUsers(u); }
   };
 
   useEffect(() => { load(); }, []);
@@ -278,21 +275,6 @@ export default function Portal() {
             }}>Add user</button>
           </div>
         </>}
-
-
-        {/* EDIT PROPERTY MODAL */}
-        {editProp && <div style={s.overlay}>
-          <div style={{...s.modal,width:400}}>
-            <div style={{fontSize:15,fontWeight:500,marginBottom:"1.25rem"}}>Edit property — {editProp.name}</div>
-            <div style={{marginBottom:12}}><label style={s.label}>Name</label><input style={s.input} value={editPropForm.name} onChange={e=>setEditPropForm(p=>({...p,name:e.target.value}))}/></div>
-            <div style={{marginBottom:12}}><label style={s.label}>Location</label><input style={s.input} value={editPropForm.location} onChange={e=>setEditPropForm(p=>({...p,location:e.target.value}))}/></div>
-            <div style={{marginBottom:"1rem"}}><label style={s.label}>System</label><select style={s.input} value={editPropForm.system} onChange={e=>setEditPropForm(p=>({...p,system:e.target.value}))}><option value="">—</option><option>Oracle</option><option>Yardi</option></select></div>
-            <div style={{display:"flex",gap:8}}>
-              <button style={s.btnP} onClick={async()=>{try{await apiFetch(`/properties/${editProp.id}`,{method:"PATCH",body:JSON.stringify(editPropForm)});setEditProp(null);load();flash("Property updated");}catch(e){flash(e.message,"error");}}}>Save</button>
-              <button style={s.btnS} onClick={()=>setEditProp(null)}>Cancel</button>
-            </div>
-          </div>
-        </div>}
 
         {/* CHANGE PASSWORD MODAL */}
         {showPwModal && <div style={s.overlay}>
