@@ -36,7 +36,7 @@ def init_db():
     )""")
     c.execute("""CREATE TABLE IF NOT EXISTS properties (
         id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
+        name TEXT UNIQUE NOT NULL,
         location TEXT DEFAULT '',
         system TEXT DEFAULT '',
         is_active BOOLEAN DEFAULT TRUE
@@ -49,6 +49,10 @@ def init_db():
         pbi_report_id TEXT NOT NULL,
         pbi_workspace_id TEXT NOT NULL,
         is_active BOOLEAN DEFAULT TRUE
+    )""")
+    # Remove duplicate properties (keep lowest id)
+    c.execute("""DELETE FROM properties WHERE id NOT IN (
+        SELECT MIN(id) FROM properties GROUP BY name
     )""")
     # Default admin
     try:
