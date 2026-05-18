@@ -29,6 +29,15 @@ export default function Portal() {
   const [editProp, setEditProp] = useState(null);
   const [editPropForm, setEditPropForm] = useState({ name: "", location: "", system: "" });
   const [editReport, setEditReport] = useState(null);
+  const [collectionLogs, setCollectionLogs] = useState([]);
+  const [emailLogs, setEmailLogs] = useState([]);
+  const [collMonth, setCollMonth] = useState(new Date().toISOString().slice(0,7));
+  const [collData, setCollData] = useState({});
+  const [collNotes, setCollNotes] = useState("");
+  const [collRecipients, setCollRecipients] = useState([]);
+  const [collProps, setCollProps] = useState([]);
+  const [sending, setSending] = useState(false);
+  const [collView, setCollView] = useState("form");
   const [editReportForm, setEditReportForm] = useState({ report_name: "", report_type: "", embed_url: "" });
 
   const flash = (text, type = "success") => { setMsg({ text, type }); setTimeout(() => setMsg(null), 3500); };
@@ -40,6 +49,8 @@ export default function Portal() {
     if (isAdmin) {
       const u = await apiFetch("/users"); if (u) setUsers(u);
       const a = await apiFetch("/properties/archived"); if (a) setArchivedProps(a);
+      const cl = await apiFetch("/collection-logs"); if (cl) setCollectionLogs(cl);
+      const el = await apiFetch("/email-logs"); if (el) setEmailLogs(el);
       const acc = await apiFetch("/user-access"); if (acc) setUserAccess(acc);
     }
   };
@@ -92,9 +103,9 @@ export default function Portal() {
         </div>
 
         <div style={s.tabBar}>
-          {(isAdmin ? ["properties", "reports", "users"] : ["properties"]).map(t => (
+          {(isAdmin ? ["properties", "collection", "reports", "users"] : ["properties"]).map(t => (
             <button key={t} style={s.tab(tab === t)} onClick={() => { setTab(t); setSelectedProp(null); setSelectedReport(null); }}>
-              {{ properties: "Properties", reports: "Manage Reports", users: "Users" }[t]}
+              {{ properties: "Properties", collection: "Collection Update", reports: "Manage Reports", users: "Users" }[t]}
             </button>
           ))}
         </div>
@@ -194,6 +205,153 @@ export default function Portal() {
               {propReports.length === 0 ? "No reports added for this property yet." : "Select a report above to view it."}
             </div>
           )}
+        </>}
+
+
+        {/* COLLECTION TAB */}
+        {tab === "collection" && isAdmin && <>
+          <div style={{display:"flex",gap:4,marginBottom:"1.5rem",background:"#f0ede8",borderRadius:8,padding:4,width:"fit-content"}}>
+            {[{id:"form",label:"Send Update"},{id:"logs",label:"Collection Log"},{id:"emails",label:"Email Log"}].map(v=>(
+              <button key={v.id} onClick={()=>setCollView(v.id)} style={{padding:"6px 16px",fontSize:13,border:"none",background:collView===v.id?"#fff":"transparent",borderRadius:6,cursor:"pointer",color:collView===v.id?"#111":"#888",fontWeight:collView===v.id?500:400,...(collView===v.id?{border:"0.5px solid #ddd"}:{})}}>
+                {v.label}
+              </button>
+            ))}
+          </div>
+
+          {collView==="form" && <>
+            <div style={s.card}>
+              <div style={{fontSize:14,fontWeight:500,marginBottom:"1rem"}}>Collection Update Email</div>
+
+              {/* Month */}
+              <div style={{marginBottom:"1rem"}}>
+                <label style={s.label}>Month</label>
+                <input type="month" style={{...s.input,width:"auto"}} value={collMonth} onChange={e=>setCollMonth(e.target.value)}/>
+              </div>
+
+              {/* Select properties */}
+              <div style={{marginBottom:"1rem"}}>
+                <label style={s.label}>Properties to include</label>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:4}}>
+                  {properties.map(p=>(
+                    <div key={p.id} onClick={()=>setCollProps(prev=>prev.includes(p.id)?prev.filter(x=>x!==p.id):[...prev,p.id])}
+                      style={{padding:"6px 14px",borderRadius:8,fontSize:12,cursor:"pointer",border:`1.5px solid ${collProps.includes(p.id)?"#111":"#ddd"}`,background:collProps.includes(p.id)?"#111":"#fff",color:collProps.includes(p.id)?"#fff":"#666",userSelect:"none"}}>
+                      {p.name} {collProps.includes(p.id)?"✓":""}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Collection data per property */}
+              {collProps.length>0 && <div style={{marginBottom:"1rem"}}>
+                <label style={s.label}>Collection figures</label>
+                <div style={{border:"0.5px solid #e0e0e0",borderRadius:8,overflow:"hidden",marginTop:4}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr 1fr",gap:0,background:"#f5f4f0",padding:"8px 12px",fontSize:11,color:"#888",fontWeight:500,textTransform:"uppercase",letterSpacing:".05em"}}>
+                    <span>Property</span><span>Total Invoices</span><span>Collection</span><span>Revenue Share</span>
+                  </div>
+                  {collProps.map(pid=>{
+                    const prop=properties.find(p=>p.id===pid);
+                    const d=collData[pid]||{};
+                    return <div key={pid} style={{display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr 1fr",gap:8,padding:"10px 12px",borderTop:"0.5px solid #eee",alignItems:"center"}}>
+                      <span style={{fontSize:13,fontWeight:500,color:"#111"}}>{prop?.name}</span>
+                      {["invoices","collection","revenue_share"].map(field=>(
+                        <input key={field} type="number" style={{...s.input,fontSize:12}} placeholder="0.00"
+                          value={d[field]||""} onChange={e=>setCollData(prev=>({...prev,[pid]:{...prev[pid],[field]:e.target.value}}))}/>
+                      ))}
+                    </div>;
+                  })}
+                </div>
+              </div>}
+
+              {/* Notes */}
+              <div style={{marginBottom:"1rem"}}>
+                <label style={s.label}>Notes <span style={{color:"#aaa",fontWeight:400}}>(optional — will appear in email)</span></label>
+                <textarea style={{...s.input,minHeight:70,resize:"vertical"}} value={collNotes} onChange={e=>setCollNotes(e.target.value)} placeholder="Any additional comments or highlights for this period..."/>
+              </div>
+
+              {/* Recipients */}
+              <div style={{marginBottom:"1.5rem"}}>
+                <label style={s.label}>Send to</label>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:4}}>
+                  {users.map(u=>(
+                    <div key={u.id} onClick={()=>setCollRecipients(prev=>prev.includes(u.id)?prev.filter(x=>x!==u.id):[...prev,u.id])}
+                      style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,fontSize:12,cursor:"pointer",border:`1.5px solid ${collRecipients.includes(u.id)?"#111":"#ddd"}`,background:collRecipients.includes(u.id)?"#111":"#fff",color:collRecipients.includes(u.id)?"#fff":"#666",userSelect:"none"}}>
+                      <Avatar name={u.full_name} size={20}/>
+                      {u.full_name.split(" ").slice(0,2).join(" ")}
+                      {collRecipients.includes(u.id)&&<span>✓</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <button style={{...s.btnP,opacity:sending?0.6:1}} disabled={sending} onClick={async()=>{
+                if(collProps.length===0){alert("Select at least one property");return;}
+                if(collRecipients.length===0){alert("Select at least one recipient");return;}
+                setSending(true);
+                try{
+                  const res=await apiFetch("/collection/send-email",{method:"POST",body:JSON.stringify({
+                    property_ids:collProps, month:collMonth, collections:collData,
+                    recipient_user_ids:collRecipients, notes:collNotes
+                  })});
+                  if(res){
+                    flash(`Email sent to ${res.sent_to.length} recipients`);
+                    setCollProps([]); setCollData({}); setCollNotes(""); setCollRecipients([]);
+                    setCollView("emails"); load();
+                  }
+                }catch(e){flash(e.message,"error");}
+                finally{setSending(false);}
+              }}>{sending?"Sending...":"Send collection update"}</button>
+            </div>
+          </>}
+
+          {collView==="logs" && <div style={s.card}>
+            <div style={{fontSize:14,fontWeight:500,marginBottom:"1rem"}}>Collection Log</div>
+            {collectionLogs.length===0&&<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:13}}>No collection records yet</div>}
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <thead><tr style={{background:"#f5f4f0"}}>
+                  {["Property","Month","Total Invoices","Collection","Revenue Share","Collection Rate","Recorded by","Date"].map(h=>(
+                    <th key={h} style={{padding:"8px 12px",textAlign:"left",fontSize:11,color:"#888",fontWeight:500,textTransform:"uppercase",letterSpacing:".05em"}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {collectionLogs.map(log=>{
+                    const rate=log.total_invoices>0?Math.round(log.total_collection/log.total_invoices*100):0;
+                    return <tr key={log.id} style={{borderBottom:"0.5px solid #eee"}}>
+                      <td style={{padding:"10px 12px",fontWeight:500}}>{log.property_name}</td>
+                      <td style={{padding:"10px 12px",color:"#666"}}>{log.month}</td>
+                      <td style={{padding:"10px 12px",color:"#666"}}>EGP {parseFloat(log.total_invoices).toLocaleString("en",{minimumFractionDigits:2})}</td>
+                      <td style={{padding:"10px 12px",color:"#111",fontWeight:500}}>EGP {parseFloat(log.total_collection).toLocaleString("en",{minimumFractionDigits:2})}</td>
+                      <td style={{padding:"10px 12px",color:"#666"}}>EGP {parseFloat(log.total_revenue_share).toLocaleString("en",{minimumFractionDigits:2})}</td>
+                      <td style={{padding:"10px 12px",color:rate>=90?"#3B6D11":rate>=70?"#185FA5":"#A32D2D",fontWeight:500}}>{rate}%</td>
+                      <td style={{padding:"10px 12px",color:"#888"}}>{log.created_by_name}</td>
+                      <td style={{padding:"10px 12px",color:"#aaa",fontSize:12}}>{new Date(log.created_at.endsWith("Z")?log.created_at:log.created_at+"Z").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric",timeZone:"Africa/Cairo"})}</td>
+                    </tr>;
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>}
+
+          {collView==="emails" && <div style={s.card}>
+            <div style={{fontSize:14,fontWeight:500,marginBottom:"1rem"}}>Email Log</div>
+            {emailLogs.length===0&&<div style={{textAlign:"center",padding:"2rem",color:"#aaa",fontSize:13}}>No emails sent yet</div>}
+            {emailLogs.map(log=>(
+              <div key={log.id} style={{padding:"12px 0",borderBottom:"0.5px solid #eee"}}>
+                <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:500,color:"#111",marginBottom:2}}>{log.subject}</div>
+                    <div style={{fontSize:12,color:"#666",marginBottom:2}}>Properties: {log.property_names}</div>
+                    <div style={{fontSize:12,color:"#888"}}>To: {log.recipients}</div>
+                  </div>
+                  <div style={{textAlign:"right",flexShrink:0}}>
+                    <span style={{padding:"3px 8px",borderRadius:20,fontSize:11,background:"#EAF3DE",color:"#3B6D11",fontWeight:500}}>{log.status}</span>
+                    <div style={{fontSize:11,color:"#aaa",marginTop:4}}>{new Date(log.sent_at.endsWith("Z")?log.sent_at:log.sent_at+"Z").toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Africa/Cairo"})}</div>
+                    <div style={{fontSize:11,color:"#bbb"}}>by {log.sent_by_name}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>}
         </>}
 
         {/* MANAGE REPORTS TAB */}
