@@ -51,9 +51,11 @@ def init_db():
         is_active BOOLEAN DEFAULT TRUE
     )""")
     # Remove duplicate properties (keep lowest id)
-    c.execute("""DELETE FROM properties WHERE id NOT IN (
-        SELECT MIN(id) FROM properties GROUP BY name
-    )""")
+    try:
+        c.execute("""DELETE FROM properties WHERE id NOT IN (
+            SELECT MIN(id) FROM properties GROUP BY name
+        )""")
+    except: pass
     # Default admin
     try:
         hashed = bcrypt.hashpw("123456".encode(), bcrypt.gensalt()).decode()
@@ -176,9 +178,9 @@ def delete_user(user_id: int, admin=Depends(require_admin)):
 
 # ── Properties ────────────────────────────────────────────────────────────────
 @app.get("/properties")
-def list_properties(current_user=Depends(get_current_user)):
+def list_properties(archived: bool = False, current_user=Depends(get_current_user)):
     conn = get_db(); c = conn.cursor()
-    c.execute("SELECT * FROM properties WHERE is_active=TRUE ORDER BY id")
+    c.execute("SELECT * FROM properties WHERE is_active=%s ORDER BY id", (not archived,))
     rows = [dict(r) for r in c.fetchall()]; conn.close(); return rows
 
 @app.post("/properties", status_code=201)
@@ -188,11 +190,26 @@ def create_property(data: PropertyCreate, admin=Depends(require_admin)):
              (data.name, data.location, data.system))
     new_id = c.fetchone()["id"]; conn.commit(); conn.close(); return {"id": new_id}
 
+@app.patch("/properties/{prop_id}")
+def update_property(prop_id: int, data: dict, admin=Depends(require_admin)):
+    conn = get_db(); c = conn.cursor()
+    allowed = {k: v for k, v in data.items() if k in ("name","location","system","is_active")}
+    if not allowed: raise HTTPException(400, "Nothing to update")
+    set_clause = ", ".join(f"{k}=%s" for k in allowed)
+    c.execute(f"UPDATE properties SET {set_clause} WHERE id=%s", (*allowed.values(), prop_id))
+    conn.commit(); conn.close(); return {"ok": True}
+
 @app.delete("/properties/{prop_id}")
 def delete_property(prop_id: int, admin=Depends(require_admin)):
     conn = get_db(); c = conn.cursor()
-    c.execute("UPDATE properties SET is_active=FALSE WHERE id=%s", (prop_id,))
+    c.execute("DELETE FROM properties WHERE id=%s", (prop_id,))
     conn.commit(); conn.close(); return {"ok": True}
+
+@app.get("/properties/archived")
+def list_archived(admin=Depends(require_admin)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT * FROM properties WHERE is_active=FALSE ORDER BY id")
+    rows = [dict(r) for r in c.fetchall()]; conn.close(); return rows
 
 # ── PBI Reports ───────────────────────────────────────────────────────────────
 @app.get("/reports")
