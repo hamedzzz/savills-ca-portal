@@ -41,15 +41,23 @@ def init_db():
         system TEXT DEFAULT '',
         is_active BOOLEAN DEFAULT TRUE
     )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS user_property_access (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES ca_users(id) ON DELETE CASCADE,
+        property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        UNIQUE(user_id, property_id)
+    )""")
     c.execute("""CREATE TABLE IF NOT EXISTS pbi_reports (
         id SERIAL PRIMARY KEY,
         property_id INTEGER REFERENCES properties(id),
         report_name TEXT NOT NULL,
         report_type TEXT NOT NULL,
-        pbi_report_id TEXT NOT NULL,
-        pbi_workspace_id TEXT NOT NULL,
+        pbi_report_id TEXT DEFAULT '',
+        pbi_workspace_id TEXT DEFAULT '',
+        embed_url TEXT DEFAULT '',
         is_active BOOLEAN DEFAULT TRUE
     )""")
+    c.execute("""ALTER TABLE pbi_reports ADD COLUMN IF NOT EXISTS embed_url TEXT DEFAULT ''""")
     # Remove duplicate properties (keep lowest id)
     try:
         c.execute("""DELETE FROM properties WHERE id NOT IN (
@@ -117,7 +125,12 @@ class PropertyCreate(BaseModel):
 
 class ReportCreate(BaseModel):
     property_id: int; report_name: str; report_type: str
-    pbi_report_id: str; pbi_workspace_id: str = PBI_WORKSPACE_ID
+    pbi_report_id: str = ""; pbi_workspace_id: str = ""
+    embed_url: str = ""
+
+class ReportUpdate(BaseModel):
+    report_name: Optional[str]=None; report_type: Optional[str]=None
+    embed_url: Optional[str]=None; pbi_report_id: Optional[str]=None
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 @app.post("/auth/login")
@@ -223,10 +236,36 @@ def list_reports(current_user=Depends(get_current_user)):
 @app.post("/reports", status_code=201)
 def create_report(data: ReportCreate, admin=Depends(require_admin)):
     conn = get_db(); c = conn.cursor()
-    c.execute("""INSERT INTO pbi_reports (property_id,report_name,report_type,pbi_report_id,pbi_workspace_id)
-                 VALUES (%s,%s,%s,%s,%s) RETURNING id""",
-             (data.property_id, data.report_name, data.report_type, data.pbi_report_id, data.pbi_workspace_id))
+    c.execute("""INSERT INTO pbi_reports (property_id,report_name,report_type,pbi_report_id,pbi_workspace_id,embed_url)
+                 VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
+             (data.property_id, data.report_name, data.report_type, data.pbi_report_id, data.pbi_workspace_id, data.embed_url))
     new_id = c.fetchone()["id"]; conn.commit(); conn.close(); return {"id": new_id}
+
+
+@app.patch("/reports/{report_id}")
+def update_report(report_id: int, data: ReportUpdate, admin=Depends(require_admin)):
+    conn=get_db(); c=conn.cursor()
+    fields={k:v for k,v in data.dict().items() if v is not None}
+    if not fields: raise HTTPException(400,"Nothing to update")
+    set_clause=", ".join(f"{k}=%s" for k in fields)
+    c.execute(f"UPDATE pbi_reports SET {set_clause} WHERE id=%s",(*fields.values(),report_id))
+    conn.commit(); conn.close(); return {"ok":True}
+
+# User Property Access
+@app.get("/user-access")
+def get_all_access(admin=Depends(require_admin)):
+    conn=get_db(); c=conn.cursor()
+    c.execute("SELECT user_id, array_agg(property_id) as property_ids FROM user_property_access GROUP BY user_id")
+    rows=c.fetchall(); conn.close()
+    return {row["user_id"]: row["property_ids"] for row in rows}
+
+@app.post("/user-access/{user_id}")
+def set_user_access(user_id: int, data: dict, admin=Depends(require_admin)):
+    conn=get_db(); c=conn.cursor()
+    c.execute("DELETE FROM user_property_access WHERE user_id=%s",(user_id,))
+    for pid in data.get("property_ids",[]):
+        c.execute("INSERT INTO user_property_access (user_id,property_id) VALUES (%s,%s) ON CONFLICT DO NOTHING",(user_id,pid))
+    conn.commit(); conn.close(); return {"ok":True}
 
 @app.delete("/reports/{report_id}")
 def delete_report(report_id: int, admin=Depends(require_admin)):
