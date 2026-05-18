@@ -15,6 +15,8 @@ AZURE_TENANT_ID = os.getenv("AZURE_TENANT_ID", "6330831d-7629-4e63-8850-6be5d7c5
 AZURE_CLIENT_ID = os.getenv("AZURE_CLIENT_ID", "b567dafc-5c6e-4161-ad01-0dd25dd90363")
 AZURE_CLIENT_SECRET = os.getenv("AZURE_CLIENT_SECRET", "")
 PBI_WORKSPACE_ID = os.getenv("PBI_WORKSPACE_ID", "a889dfd6-b0ce-49dd-b41d-c79de2dfd0b5")
+SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")
+PORTAL_URL = os.getenv("PORTAL_URL", "https://savills-ca-portal.vercel.app")
 
 # DB
 def get_db():
