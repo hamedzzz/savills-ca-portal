@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 
 function Avatar({ name, size = 32 }) {
@@ -8,58 +8,28 @@ function Avatar({ name, size = 32 }) {
   return <div style={{width:size,height:size,borderRadius:"50%",background:bg,color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.36,fontWeight:500,flexShrink:0}}>{initials}</div>;
 }
 
-function PBIReport({ reportId, workspaceId, apiUrl, token }) {
-  const containerRef = useRef(null);
-  const [embedData, setEmbedData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    if (!reportId) return;
-    setLoading(true); setError(null);
-    fetch(`${apiUrl}/pbi/embed-token/${reportId}?workspace_id=${workspaceId}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(r => r.json())
-      .then(d => { if (d.detail) throw new Error(d.detail); setEmbedData(d); })
-      .catch(e => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [reportId]);
-
-  useEffect(() => {
-    if (!embedData || !containerRef.current || !window.powerbi) return;
-    const config = {
-      type: "report", id: embedData.reportId, embedUrl: embedData.embedUrl,
-      accessToken: embedData.token, tokenType: window.models?.TokenType?.Embed ?? 1,
-      settings: { navContentPaneEnabled: true, filterPaneEnabled: true }
-    };
-    window.powerbi.embed(containerRef.current, config);
-  }, [embedData]);
-
-  if (loading) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:500,color:"#888",fontSize:13}}>Loading report...</div>;
-  if (error) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:500,color:"#A32D2D",fontSize:13}}>Error: {error}</div>;
-  return <div ref={containerRef} style={{width:"100%",height:600,border:"none"}}/>;
-}
-
 export default function Portal() {
-  const { user, logout, apiFetch, isAdmin, API } = useAuth();
+  const { user, logout, apiFetch, isAdmin } = useAuth();
   const [tab, setTab] = useState("properties");
   const [properties, setProperties] = useState([]);
   const [archivedProps, setArchivedProps] = useState([]);
   const [showArchived, setShowArchived] = useState(false);
   const [reports, setReports] = useState([]);
   const [users, setUsers] = useState([]);
+  const [userAccess, setUserAccess] = useState({});
   const [selectedProp, setSelectedProp] = useState(null);
   const [selectedReport, setSelectedReport] = useState(null);
   const [msg, setMsg] = useState(null);
   const [showPwModal, setShowPwModal] = useState(false);
   const [pwForm, setPwForm] = useState({ current_password: "", new_password: "", confirm: "" });
-  const [newReport, setNewReport] = useState({ property_id: "", report_name: "", report_type: "Collection", pbi_report_id: "", pbi_workspace_id: "a889dfd6-b0ce-49dd-b41d-c79de2dfd0b5" });
+  const [newReport, setNewReport] = useState({ property_id: "", report_name: "", report_type: "Collection", embed_url: "" });
   const [newUser, setNewUser] = useState({ username: "", full_name: "", email: "", title: "", password: "", role: "viewer" });
+  const [newUserAccess, setNewUserAccess] = useState([]);
   const [newProp, setNewProp] = useState({ name: "", location: "", system: "" });
   const [editProp, setEditProp] = useState(null);
   const [editPropForm, setEditPropForm] = useState({ name: "", location: "", system: "" });
-  const token = localStorage.getItem("ca_token");
+  const [editReport, setEditReport] = useState(null);
+  const [editReportForm, setEditReportForm] = useState({ report_name: "", report_type: "", embed_url: "" });
 
   const flash = (text, type = "success") => { setMsg({ text, type }); setTimeout(() => setMsg(null), 3500); };
 
@@ -70,10 +40,15 @@ export default function Portal() {
     if (isAdmin) {
       const u = await apiFetch("/users"); if (u) setUsers(u);
       const a = await apiFetch("/properties/archived"); if (a) setArchivedProps(a);
+      const acc = await apiFetch("/user-access"); if (acc) setUserAccess(acc);
     }
   };
 
   useEffect(() => { load(); }, []);
+
+  const visibleProps = isAdmin ? properties : properties.filter(p =>
+    userAccess[user?.id]?.includes(p.id) || userAccess[user?.id] === null
+  );
 
   const propReports = reports.filter(r => r.property_id === selectedProp?.id);
   const reportTypes = ["Collection", "Aging", "Budget vs Actual", "Invoice Reconciliation", "Income Statement", "Other"];
@@ -89,7 +64,7 @@ export default function Portal() {
     btnP: { background: "#111", color: "#fff", border: "none", borderRadius: 8, padding: "9px 20px", fontSize: 13, fontWeight: 500, cursor: "pointer" },
     btnS: { background: "transparent", color: "#111", border: "0.5px solid #ccc", borderRadius: 8, padding: "9px 20px", fontSize: 13, cursor: "pointer" },
     overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 },
-    modal: { background: "#fff", borderRadius: 12, padding: "1.5rem", width: 420, border: "0.5px solid #e0e0e0" },
+    modal: { background: "#fff", borderRadius: 12, padding: "1.5rem", width: 480, border: "0.5px solid #e0e0e0", maxHeight: "90vh", overflowY: "auto" },
     formGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: "1rem" },
     iconBtn: { background: "none", border: "none", cursor: "pointer", padding: 2 },
   };
@@ -127,7 +102,7 @@ export default function Portal() {
         {/* PROPERTIES TAB */}
         {tab === "properties" && !selectedProp && <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: "1rem", marginBottom: "1rem" }}>
-            {properties.map(p => (
+            {visibleProps.map(p => (
               <div key={p.id} style={{ ...s.card, marginBottom: 0 }}>
                 <div onClick={() => { setSelectedProp(p); setSelectedReport(null); }} style={{ cursor: "pointer" }}>
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
@@ -204,8 +179,15 @@ export default function Portal() {
           )}
           {selectedReport ? (
             <div style={s.card}>
-              <div style={{ fontSize: 14, fontWeight: 500, color: "#111", marginBottom: "1rem" }}>{selectedReport.report_name}</div>
-              <PBIReport reportId={selectedReport.pbi_report_id} workspaceId={selectedReport.pbi_workspace_id} apiUrl={API} token={token} />
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
+                <div style={{ fontSize: 14, fontWeight: 500, color: "#111" }}>{selectedReport.report_name}</div>
+                {isAdmin && <button style={{ ...s.btnS, padding: "4px 12px", fontSize: 11 }} onClick={() => { setEditReport(selectedReport); setEditReportForm({ report_name: selectedReport.report_name, report_type: selectedReport.report_type, embed_url: selectedReport.embed_url || "" }); }}>Edit URL</button>}
+              </div>
+              {selectedReport.embed_url ? (
+                <iframe src={selectedReport.embed_url} style={{ width: "100%", height: 600, border: "none", borderRadius: 8 }} allowFullScreen title={selectedReport.report_name} />
+              ) : (
+                <div style={{ textAlign: "center", padding: "3rem", color: "#aaa", fontSize: 13 }}>No embed URL set. Click "Edit URL" to add one.</div>
+              )}
             </div>
           ) : (
             <div style={{ ...s.card, textAlign: "center", padding: "3rem", color: "#aaa", fontSize: 13 }}>
@@ -220,11 +202,15 @@ export default function Portal() {
             <div style={{ fontSize: 14, fontWeight: 500, marginBottom: "1rem" }}>All reports</div>
             {reports.length === 0 && <div style={{ textAlign: "center", padding: "2rem", color: "#aaa", fontSize: 13 }}>No reports added yet</div>}
             {reports.map(r => (
-              <div key={r.id} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 8, alignItems: "center", padding: "10px 0", borderBottom: "0.5px solid #eee", fontSize: 13 }}>
-                <span style={{ fontWeight: 500 }}>{r.report_name}</span>
-                <span style={{ color: "#888" }}>{r.property_name}</span>
-                <span style={{ padding: "3px 8px", borderRadius: 20, fontSize: 11, background: "#E6F1FB", color: "#185FA5", width: "fit-content" }}>{r.report_type}</span>
-                <button style={{ ...s.iconBtn, color: "#A32D2D", fontSize: 12 }} onClick={async () => { if (!confirm("Delete this report?")) return; await apiFetch(`/reports/${r.id}`, { method: "DELETE" }); load(); flash("Deleted"); }}>✕</button>
+              <div key={r.id} style={{ padding: "12px 0", borderBottom: "0.5px solid #eee" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto auto", gap: 8, alignItems: "center", fontSize: 13 }}>
+                  <span style={{ fontWeight: 500 }}>{r.report_name}</span>
+                  <span style={{ color: "#888" }}>{r.property_name}</span>
+                  <span style={{ padding: "3px 8px", borderRadius: 20, fontSize: 11, background: "#E6F1FB", color: "#185FA5", width: "fit-content" }}>{r.report_type}</span>
+                  <button style={{ ...s.btnS, padding: "3px 10px", fontSize: 11 }} onClick={() => { setEditReport(r); setEditReportForm({ report_name: r.report_name, report_type: r.report_type, embed_url: r.embed_url || "" }); }}>Edit</button>
+                  <button style={{ ...s.iconBtn, color: "#A32D2D", fontSize: 12 }} onClick={async () => { if (!confirm("Delete this report?")) return; await apiFetch(`/reports/${r.id}`, { method: "DELETE" }); load(); flash("Deleted"); }}>✕</button>
+                </div>
+                {r.embed_url && <div style={{ fontSize: 11, color: "#aaa", marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.embed_url}</div>}
               </div>
             ))}
           </div>
@@ -243,12 +229,13 @@ export default function Portal() {
                   {reportTypes.map(t => <option key={t}>{t}</option>)}
                 </select>
               </div>
-              <div><label style={s.label}>Power BI Report ID</label><input style={s.input} value={newReport.pbi_report_id} onChange={e => setNewReport(p => ({ ...p, pbi_report_id: e.target.value }))} placeholder="From Power BI URL" /></div>
-              <div style={{ gridColumn: "1/-1" }}><label style={s.label}>Workspace ID</label><input style={s.input} value={newReport.pbi_workspace_id} onChange={e => setNewReport(p => ({ ...p, pbi_workspace_id: e.target.value }))} /></div>
+              <div style={{ gridColumn: "1/-1" }}><label style={s.label}>Embed URL <span style={{ color: "#aaa", fontWeight: 400 }}>(from Power BI → File → Embed report → Publish to web)</span></label>
+                <input style={s.input} value={newReport.embed_url} onChange={e => setNewReport(p => ({ ...p, embed_url: e.target.value }))} placeholder="https://app.powerbi.com/reportEmbed?reportId=..." />
+              </div>
             </div>
             <button style={s.btnP} onClick={async () => {
-              if (!newReport.property_id || !newReport.report_name || !newReport.pbi_report_id) { flash("Please fill all required fields", "error"); return; }
-              try { await apiFetch("/reports", { method: "POST", body: JSON.stringify({ ...newReport, property_id: parseInt(newReport.property_id) }) }); setNewReport({ property_id: "", report_name: "", report_type: "Collection", pbi_report_id: "", pbi_workspace_id: "a889dfd6-b0ce-49dd-b41d-c79de2dfd0b5" }); load(); flash("Report added"); } catch (e) { flash(e.message, "error"); }
+              if (!newReport.property_id || !newReport.report_name) { flash("Please fill required fields", "error"); return; }
+              try { await apiFetch("/reports", { method: "POST", body: JSON.stringify({ ...newReport, property_id: parseInt(newReport.property_id) }) }); setNewReport({ property_id: "", report_name: "", report_type: "Collection", embed_url: "" }); load(); flash("Report added"); } catch (e) { flash(e.message, "error"); }
             }}>Add report</button>
           </div>
         </>}
@@ -258,15 +245,31 @@ export default function Portal() {
           <div style={s.card}>
             <div style={{ fontSize: 14, fontWeight: 500, marginBottom: "1rem" }}>Team members</div>
             {users.map(u => (
-              <div key={u.id} style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr 1.5fr 1fr auto", gap: 8, alignItems: "center", padding: "10px 0", borderBottom: "0.5px solid #eee", fontSize: 13 }}>
-                <span style={{ color: "#666", fontFamily: "monospace", fontSize: 12 }}>{u.username}</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Avatar name={u.full_name} size={26} />
-                  <div><div style={{ color: "#111" }}>{u.full_name}</div>{u.title && <div style={{ fontSize: 11, color: "#888" }}>{u.title}</div>}</div>
+              <div key={u.id} style={{ padding: "10px 0", borderBottom: "0.5px solid #eee" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr 1.5fr 1fr auto", gap: 8, alignItems: "center", fontSize: 13 }}>
+                  <span style={{ color: "#666", fontFamily: "monospace", fontSize: 12 }}>{u.username}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <Avatar name={u.full_name} size={26} />
+                    <div><div style={{ color: "#111" }}>{u.full_name}</div>{u.title && <div style={{ fontSize: 11, color: "#888" }}>{u.title}</div>}</div>
+                  </div>
+                  <span style={{ color: "#666", fontSize: 12 }}>{u.email || "—"}</span>
+                  <span style={{ padding: "3px 8px", borderRadius: 20, fontSize: 11, background: u.role === "admin" ? "#EEEDFE" : "#F1EFE8", color: u.role === "admin" ? "#534AB7" : "#5F5E5A", fontWeight: 500 }}>{u.role}</span>
+                  {u.id !== user?.id && <button style={{ ...s.iconBtn, color: "#A32D2D", fontSize: 12 }} onClick={async () => { if (!confirm("Delete this user?")) return; await apiFetch(`/users/${u.id}`, { method: "DELETE" }); load(); flash("User deleted"); }}>✕</button>}
                 </div>
-                <span style={{ color: "#666", fontSize: 12 }}>{u.email || "—"}</span>
-                <span style={{ padding: "3px 8px", borderRadius: 20, fontSize: 11, background: u.role === "admin" ? "#EEEDFE" : "#F1EFE8", color: u.role === "admin" ? "#534AB7" : "#5F5E5A", fontWeight: 500 }}>{u.role}</span>
-                {u.id !== user?.id && <button style={{ ...s.iconBtn, color: "#A32D2D", fontSize: 12 }} onClick={async () => { if (!confirm("Delete this user?")) return; await apiFetch(`/users/${u.id}`, { method: "DELETE" }); load(); flash("User deleted"); }}>✕</button>}
+                {u.role !== "admin" && (
+                  <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 11, color: "#888", marginRight: 4 }}>Access:</span>
+                    {properties.map(p => {
+                      const hasAccess = !userAccess[u.id] || userAccess[u.id]?.includes(p.id);
+                      return <span key={p.id} onClick={async () => {
+                        const current = userAccess[u.id] || properties.map(x => x.id);
+                        const updated = hasAccess ? current.filter(id => id !== p.id) : [...current, p.id];
+                        await apiFetch(`/user-access/${u.id}`, { method: "POST", body: JSON.stringify({ property_ids: updated }) });
+                        load();
+                      }} style={{ padding: "2px 8px", borderRadius: 20, fontSize: 11, cursor: "pointer", background: hasAccess ? "#EAF3DE" : "#f0ede8", color: hasAccess ? "#3B6D11" : "#aaa", border: `1px solid ${hasAccess ? "#C0DD97" : "#ddd"}` }}>{p.name}</span>;
+                    })}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -285,12 +288,52 @@ export default function Portal() {
                 </select>
               </div>
             </div>
+            {newUser.role === "viewer" && <div style={{ marginBottom: "1rem" }}>
+              <label style={s.label}>Property access</label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                {properties.map(p => (
+                  <div key={p.id} onClick={() => setNewUserAccess(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])}
+                    style={{ padding: "5px 12px", borderRadius: 20, fontSize: 12, cursor: "pointer", border: `1.5px solid ${newUserAccess.includes(p.id) ? "#111" : "#ddd"}`, background: newUserAccess.includes(p.id) ? "#111" : "#fff", color: newUserAccess.includes(p.id) ? "#fff" : "#666", userSelect: "none" }}>
+                    {p.name} {newUserAccess.includes(p.id) ? "✓" : ""}
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: "#aaa", marginTop: 4 }}>No selection = access to all properties</div>
+            </div>}
             <button style={s.btnP} onClick={async () => {
               if (!newUser.username || !newUser.full_name || !newUser.password) { flash("Please fill required fields", "error"); return; }
-              try { await apiFetch("/users", { method: "POST", body: JSON.stringify(newUser) }); setNewUser({ username: "", full_name: "", email: "", title: "", password: "", role: "viewer" }); load(); flash("User added"); } catch (e) { flash(e.message, "error"); }
+              try {
+                const res = await apiFetch("/users", { method: "POST", body: JSON.stringify(newUser) });
+                if (res && newUserAccess.length > 0) {
+                  await apiFetch(`/user-access/${res.id}`, { method: "POST", body: JSON.stringify({ property_ids: newUserAccess }) });
+                }
+                setNewUser({ username: "", full_name: "", email: "", title: "", password: "", role: "viewer" });
+                setNewUserAccess([]);
+                load(); flash("User added");
+              } catch (e) { flash(e.message, "error"); }
             }}>Add user</button>
           </div>
         </>}
+
+        {/* EDIT REPORT MODAL */}
+        {editReport && <div style={s.overlay}>
+          <div style={s.modal}>
+            <div style={{ fontSize: 15, fontWeight: 500, marginBottom: "1.25rem" }}>Edit report — {editReport.report_name}</div>
+            <div style={{ marginBottom: 12 }}><label style={s.label}>Report name</label><input style={s.input} value={editReportForm.report_name} onChange={e => setEditReportForm(p => ({ ...p, report_name: e.target.value }))} /></div>
+            <div style={{ marginBottom: 12 }}><label style={s.label}>Report type</label>
+              <select style={s.input} value={editReportForm.report_type} onChange={e => setEditReportForm(p => ({ ...p, report_type: e.target.value }))}>
+                {reportTypes.map(t => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+            <div style={{ marginBottom: "1rem" }}><label style={s.label}>Embed URL</label><textarea style={{ ...s.input, minHeight: 80, resize: "vertical" }} value={editReportForm.embed_url} onChange={e => setEditReportForm(p => ({ ...p, embed_url: e.target.value }))} placeholder="https://app.powerbi.com/reportEmbed?..." /></div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button style={s.btnP} onClick={async () => {
+                try { await apiFetch(`/reports/${editReport.id}`, { method: "PATCH", body: JSON.stringify(editReportForm) }); setEditReport(null); load(); flash("Report updated"); if (selectedReport?.id === editReport.id) setSelectedReport({ ...selectedReport, ...editReportForm }); } catch (e) { flash(e.message, "error"); }
+              }}>Save</button>
+              <button style={s.btnS} onClick={() => setEditReport(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>}
 
         {/* EDIT PROPERTY MODAL */}
         {editProp && <div style={s.overlay}>
