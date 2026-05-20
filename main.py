@@ -310,54 +310,146 @@ def build_collection_email(month: str, rows: list, notes: str, portal_url: str) 
     rows_html = ""
     for r in rows:
         coll_rate = round(float(r["total_collection"]) / float(r["total_invoices"]) * 100, 1) if r["total_invoices"] else 0
+        if coll_rate >= 90:
+            rate_color = "#2CA01C"
+            rate_bg = "#F2FBF0"
+            rate_badge = f'<span style="display:inline-block;background:#F2FBF0;color:#2CA01C;border:1px solid #B7E5B0;border-radius:20px;padding:3px 10px;font-size:13px;font-weight:600">{coll_rate}%</span>'
+        elif coll_rate >= 70:
+            rate_color = "#B45309"
+            rate_bg = "#FFFBEB"
+            rate_badge = f'<span style="display:inline-block;background:#FFFBEB;color:#B45309;border:1px solid #FDE68A;border-radius:20px;padding:3px 10px;font-size:13px;font-weight:600">{coll_rate}%</span>'
+        else:
+            rate_color = "#DC2626"
+            rate_bg = "#FEF2F2"
+            rate_badge = f'<span style="display:inline-block;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;border-radius:20px;padding:3px 10px;font-size:13px;font-weight:600">{coll_rate}%</span>'
+
         rows_html += f"""
-        <tr>
-            <td style="padding:12px 16px;border-bottom:1px solid #f0ede8;font-weight:500;color:#111">{r["property_name"]}</td>
-            <td style="padding:12px 16px;border-bottom:1px solid #f0ede8;text-align:right;color:#111">EGP {fmt_num(r["total_invoices"])}</td>
-            <td style="padding:12px 16px;border-bottom:1px solid #f0ede8;text-align:right;color:#111">EGP {fmt_num(r["total_collection"])}</td>
-            <td style="padding:12px 16px;border-bottom:1px solid #f0ede8;text-align:right;color:#111">EGP {fmt_num(r["total_revenue_share"])}</td>
-            <td style="padding:12px 16px;border-bottom:1px solid #f0ede8;text-align:right;color:{'#3B6D11' if coll_rate >= 90 else '#854F0B' if coll_rate >= 70 else '#A32D2D'};font-weight:500">{coll_rate}%</td>
+        <tr style="border-bottom:1px solid #F3F4F6">
+          <td style="padding:14px 20px;font-size:14px;font-weight:500;color:#111827">{r["property_name"]}</td>
+          <td style="padding:14px 20px;text-align:right;font-size:14px;color:#374151">EGP&nbsp;{fmt_num(r["total_invoices"])}</td>
+          <td style="padding:14px 20px;text-align:right;font-size:14px;color:#374151">EGP&nbsp;{fmt_num(r["total_collection"])}</td>
+          <td style="padding:14px 20px;text-align:right;font-size:14px;color:#374151">EGP&nbsp;{fmt_num(r["total_revenue_share"])}</td>
+          <td style="padding:14px 20px;text-align:center">{rate_badge}</td>
         </tr>"""
 
-    notes_section = f"""<div style="background:#f5f4f0;border-radius:8px;padding:16px;margin:24px 0;font-size:14px;color:#444">{notes}</div>""" if notes else ""
+    notes_section = f"""
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px 0">
+      <tr>
+        <td style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:16px 20px;font-size:14px;color:#374151;line-height:1.6">
+          <strong style="color:#111827;display:block;margin-bottom:4px">Note</strong>
+          {notes}
+        </td>
+      </tr>
+    </table>""" if notes else ""
 
-    return f"""
-    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:700px;margin:0 auto;background:#fff">
-      <div style="background:#111;padding:24px 32px;border-radius:8px 8px 0 0">
-        <div style="display:flex;align-items:center;gap:12px">
-          <div style="width:36px;height:36px;background:#F5B800;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#111">S</div>
-          <div>
-            <div style="color:#fff;font-size:16px;font-weight:600">Savills Egypt</div>
-            <div style="color:#888;font-size:12px">Client Accounting · Property Management</div>
-          </div>
-        </div>
-      </div>
-      <div style="padding:32px">
-        <h2 style="margin:0 0 8px;color:#111;font-size:20px">Collection Update — {month}</h2>
-        <p style="color:#666;font-size:14px;margin:0 0 24px">Please find below the collection performance summary for the above period.</p>
-        {notes_section}
-        <table style="width:100%;border-collapse:collapse;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden">
-          <thead>
-            <tr style="background:#f5f4f0">
-              <th style="padding:12px 16px;text-align:left;font-size:12px;color:#888;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Property</th>
-              <th style="padding:12px 16px;text-align:right;font-size:12px;color:#888;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Total Invoices</th>
-              <th style="padding:12px 16px;text-align:right;font-size:12px;color:#888;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Collection</th>
-              <th style="padding:12px 16px;text-align:right;font-size:12px;color:#888;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Revenue Share</th>
-              <th style="padding:12px 16px;text-align:right;font-size:12px;color:#888;font-weight:500;text-transform:uppercase;letter-spacing:.05em">Rate</th>
-            </tr>
-          </thead>
-          <tbody>{rows_html}</tbody>
-        </table>
-        <div style="margin-top:32px;padding:20px;background:#f5f4f0;border-radius:8px;text-align:center">
-          <p style="margin:0 0 12px;color:#444;font-size:14px">View detailed collection reports on the Client Accounting Portal</p>
-          <a href="{portal_url}" style="display:inline-block;background:#111;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:500">Access Portal →</a>
-          <p style="margin:12px 0 0;color:#888;font-size:12px">Login with your username and password</p>
-        </div>
-        <div style="margin-top:24px;padding-top:24px;border-top:1px solid #e0e0e0;font-size:12px;color:#aaa;text-align:center">
-          Savills Egypt · Client Accounting · Property Management<br>This email was sent from the Savills Egypt CA Portal
-        </div>
-      </div>
-    </div>"""
+    # Savills official logo (inline base64 SVG)
+    savills_logo = f"""
+      <table cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="vertical-align:middle">
+            <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48dGl0bGU+U2F2aWxscyBMb2dvPC90aXRsZT48ZyBmaWxsPSJub25lIj48cGF0aCBmaWxsPSIjZmVkZTA3IiBkPSJNMTAwIDBIMHYxMDBoMTAweiIvPjxwYXRoIGQ9Ik0xNC41NzYgOTMuNjMzYy01LjExNCAwLTguNTgyLTIuNjItOC41ODItNy40ODV2LS4xODdIOC44di4xMjVjMCAzLjE4IDIuMzA3IDUuMDUyIDUuOCA1LjA1MiAxLjg3MSAwIDUuNDI2LS44MSA1LjQyNi0zLjgwNCAwLTUuODAxLTEzLjM0Ny0xLjY4NS0xMy4zNDctOS45OCAwLTQuMTggMy44OTItNi4wNSA3Ljc1OS02LjA1IDQuNTUzIDAgNy42NDYgMi42MiA3LjY0NiA2Ljg2di4xODhIMTkuMjh2LS4xODdjMC0yLjc0NS0xLjkzMy00LjM2Ni01LjA1Mi00LjM2Ni0yLjE4MyAwLTQuNzQuOTM2LTQuNzQgMy40MyAwIDUuNDI2IDEzLjM0NyAxLjYyMiAxMy4zNDcgOS45OCAwIDQuNDI4LTQuMTQgNi40MjQtOC4yNTcgNi40MjRNMzguOCA4Mi4wMzJjLS40MzUuMzc0LTEuNDk2LjU2Mi0yLjA1OC42MjRsLTEuOTk1LjI1Yy0zLjc0My40MzYtNy4yMzUgMS4xODQtNy4yMzUgNC40MjggMCAyLjY4MiAyLjMwNyAzLjgwNCA0LjM2NSAzLjgwNCAyLjEyMSAwIDMuOTkyLS43NDggNS4zMDItMi4wNTggMS4wNi0xLjEyMyAxLjYyMi0yLjYyIDEuNjIyLTQuMjQxdi0yLjgwN3ptLjUgMTAuOTc3Yy0uMzEzLTEuMTIzLS4zMTMtMy4zNjgtLjMxMy0zLjM2OC0xLjA2IDIuMzA4LTMuNDkyIDMuOTkyLTcuMjk2IDMuOTkyLTQuMzY2IDAtNi45ODYtMi4zNy02Ljk4Ni02LjIzNyAwLTUuNjE0IDUuMDUxLTYuMTc2IDkuOTgtNi43MzZsMS4wNi0uMTI1YzEuOTk1LS4yNSAzLjA1Ni0uNSAzLjA1Ni0yLjY4MyAwLTIuODA3LTEuNjIyLTQuMDU0LTUuMTE0LTQuMDU0LTIuOTMyIDAtNS4zMDIgMS4yNDctNS4zMDIgNC40Mjl2LjE4N2gtMi44MDd2LS4xODdjMC00LjkyNyAzLjkzLTYuOTIzIDguNDItNi45MjMgNC44NjUgMCA3LjY2IDEuOTMzIDcuNjYgNi40ODZ2MTEuNDc3YzAgLjk5OC4xNzYgMy4xMi40MjYgMy43NDJoLTIuNzg1em0yMC42NDQtMjEuMDgyaC4yNUw1Mi45NiA5My4wMDloLTMuMDU2bC03LjQ4Ni0yMS4wODJoMy4yNTVsNS43OSAxNy44NjQgNS43MjktMTcuODY0em01LjAyMi01LjU0OUExLjk3MSAxLjk3MSAwIDAgMCA2MyA2NC40MTNjLTEuMDQ4IDAtMS45NjUuODUxLTEuOTY1IDEuODk5QTEuOTcgMS45NyAwIDAgMCA2MyA2OC4yNzdhMS45NyAxLjk3IDAgMCAwIDEuOTY1LTEuOTY1di4wNjZ6bS0zLjQgNS41NDloMi45MzJ2MjEuMDgyaC0yLjkzMnptNS44MDEtNy45ODRoMi45MzFWOTMuMDFoLTIuOTN6bTUuNzM5IDBoMi45MzJWOTMuMDFoLTIuOTMyem0xMy4xOTcgMjkuNjljLTUuMTc3IDAtOC42NDUtMi42Mi04LjY0NS03LjQ4NXYtLjE4N2gyLjgwN3YuMTI1YzAgMy4xOCAyLjM3IDUuMDUyIDUuOCA1LjA1MiAxLjg3MSAwIDUuNDktLjgxIDUuNDktMy44MDQgMC01LjgwMS0xMy40MS0xLjY4NS0xMy40MS05Ljk4IDAtNC4xOCAzLjg5Mi02LjA1IDcuNzU4LTYuMDUgNC42MTYgMCA3LjcxIDIuNjIgNy43MSA2Ljg2di4xODhoLTIuODA3di0uMTg3YzAtMi43NDUtMS45MzMtNC4zNjYtNS4wNTItNC4zNjYtMi4yNDUgMC00LjgwMy45MzYtNC44MDMgMy40MyAwIDUuNDI2IDEzLjQxIDEuNjIyIDEzLjQxIDkuOTggMCA0LjQyOC00LjE0IDYuNDI0LTguMjU3IDYuNDI0IiBmaWxsPSIjYzgwYzBmIi8+PC9nPjwvc3ZnPg==" alt="Savills" width="40" height="40" style="display:block;border-radius:4px" />
+          </td>
+          <td style="padding-left:10px;vertical-align:middle">
+            <div style="font-size:11px;color:#6B7280;letter-spacing:0.5px;text-transform:uppercase">Client Accounting Portal</div>
+          </td>
+        </tr>
+      </table>"""
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Collection Update — {month}</title></head>
+<body style="margin:0;padding:0;background:#F3F4F6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif">
+
+  <!-- Outer wrapper -->
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F3F4F6;padding:32px 16px">
+    <tr><td align="center">
+
+      <!-- Card -->
+      <table width="620" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;border:1px solid #E5E7EB;overflow:hidden">
+
+        <!-- ── TOP BAR (yellow accent) ── -->
+        <tr><td style="background:#F5B800;height:4px;font-size:0">&nbsp;</td></tr>
+
+        <!-- ── HEADER ── -->
+        <tr>
+          <td style="padding:28px 32px;border-bottom:1px solid #F3F4F6">
+            {savills_logo}
+          </td>
+        </tr>
+
+        <!-- ── TITLE ── -->
+        <tr>
+          <td style="padding:28px 32px 0 32px">
+            <div style="font-size:11px;font-weight:600;color:#6B7280;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px">Collection Report</div>
+            <div style="font-size:24px;font-weight:700;color:#111827;margin-bottom:8px">Collection Update — {month}</div>
+            <div style="font-size:14px;color:#6B7280;line-height:1.6">Please find below the collection performance summary for the above period.</div>
+          </td>
+        </tr>
+
+        <!-- ── DIVIDER ── -->
+        <tr><td style="padding:20px 32px 0 32px"><div style="border-top:1px solid #F3F4F6"></div></td></tr>
+
+        <!-- ── NOTES (if any) ── -->
+        {'<tr><td style="padding:20px 32px 0 32px">' + notes_section + '</td></tr>' if notes else ''}
+
+        <!-- ── TABLE ── -->
+        <tr>
+          <td style="padding:20px 32px 0 32px">
+            <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;border-collapse:separate;border-spacing:0">
+              <!-- Table header -->
+              <tr style="background:#F9FAFB">
+                <th style="padding:12px 20px;text-align:left;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E5E7EB">Property</th>
+                <th style="padding:12px 20px;text-align:right;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E5E7EB">Total Invoices</th>
+                <th style="padding:12px 20px;text-align:right;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E5E7EB">Collection</th>
+                <th style="padding:12px 20px;text-align:right;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E5E7EB">Revenue Share</th>
+                <th style="padding:12px 20px;text-align:center;font-size:11px;font-weight:600;color:#6B7280;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E5E7EB">Rate</th>
+              </tr>
+              {rows_html}
+            </table>
+          </td>
+        </tr>
+
+        <!-- ── CTA ── -->
+        <tr>
+          <td style="padding:28px 32px">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px">
+              <tr>
+                <td style="padding:20px 24px">
+                  <div style="font-size:14px;font-weight:600;color:#111827;margin-bottom:4px">View Detailed Reports</div>
+                  <div style="font-size:13px;color:#6B7280;margin-bottom:16px">Access full collection data, historical trends, and Power BI dashboards on the Client Accounting Portal.</div>
+                  <a href="{portal_url}" style="display:inline-block;background:#111827;color:#ffffff;padding:10px 22px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600;letter-spacing:.01em">Access Portal &rarr;</a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- ── FOOTER ── -->
+        <tr>
+          <td style="padding:0 32px 28px 32px;border-top:1px solid #F3F4F6">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="padding-top:20px;font-size:12px;color:#9CA3AF;line-height:1.6">
+                  This email was sent from the <strong style="color:#6B7280">Savills Egypt CA Portal</strong>.<br>
+                  Savills Egypt &middot; Client Accounting &middot; Property Management
+                </td>
+                <td style="padding-top:20px;text-align:right;vertical-align:top">
+                  <span style="font-size:11px;color:#D1D5DB">Confidential</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+      </table>
+      <!-- /Card -->
+
+    </td></tr>
+  </table>
+
+</body>
+</html>"""
 
 @app.get("/collection-logs")
 def list_collection_logs(property_id: int = None, month: str = None, admin=Depends(require_admin)):
