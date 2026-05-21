@@ -219,6 +219,7 @@ export default function Portal(){
           <td style="padding:10px 14px;color:#57647A;border-bottom:1px solid #EEF0F3">EGP ${fmtShort(log.total_revenue_share)}</td>
           <td style="padding:10px 14px;font-weight:600;color:#2CA01C;border-bottom:1px solid #EEF0F3">EGP ${fmtShort(log.total_collection)}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3"><span style="background:${rateBg};color:${rateColor};padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">${rate}%</span></td>
+          <td style="padding:10px 14px;color:#57647A;font-size:12px;border-bottom:1px solid #EEF0F3">${log.notes||"—"}</td>
         </tr>`;
       }).join("");
     }).join("");
@@ -267,6 +268,7 @@ export default function Portal(){
           <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#57647A;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E3E8EF">Rev. Share</th>
           <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#57647A;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E3E8EF">Collection</th>
           <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#57647A;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E3E8EF">Rate</th>
+          <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#57647A;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E3E8EF">Notes</th>
         </tr>
       </thead>
       <tbody>${rowsHTML}</tbody>
@@ -752,7 +754,7 @@ export default function Portal(){
               <div style={{overflowX:"auto"}}>
                 <table style={{width:"100%",borderCollapse:"collapse"}}>
                   <thead><tr>
-                    {["Property","Month","Invoices","Rev. Share","Collection","Rate","By",...(isEditor?[""]:[])].map((h,i)=><th key={i} style={s.th}>{h}</th>)}
+                    {["Property","Month","Invoices","Rev. Share","Collection","Rate","Notes","By",...(isEditor?[""]:[])].map((h,i)=><th key={i} style={s.th}>{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {/* Group by property */}
@@ -769,6 +771,7 @@ export default function Portal(){
                           <td style={s.td}>EGP {fmtShort(log.total_revenue_share)}</td>
                           <td style={{...s.td,fontWeight:600,color:QB.green}}>EGP {fmtShort(log.total_collection)}</td>
                           <td style={s.td}><RateBadge rate={rate}/></td>
+                          <td style={{...s.td,color:QB.textSecondary,fontSize:12,maxWidth:180}}>{log.notes||<span style={{color:QB.textMuted}}>—</span>}</td>
                           <td style={{...s.td,color:QB.textMuted,fontSize:12}}>{log.updated_by_name||log.created_by_name}</td>
                           {isEditor&&<td style={s.td}>
                             <div style={{display:"flex",gap:6}}>
