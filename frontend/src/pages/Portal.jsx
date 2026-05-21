@@ -370,8 +370,8 @@ export default function Portal(){
   const tabs=isAdmin
     ?["properties","reports","collection","email","manage-reports","users","activity","settings"]
     :isEditor
-    ?["properties","reports","collection","email","activity"]
-    :["properties","reports","collection","activity"];
+    ?["properties","reports","collection","email"]
+    :["properties","reports","collection"];
 
   const tabLabels={
     properties:"Properties",
