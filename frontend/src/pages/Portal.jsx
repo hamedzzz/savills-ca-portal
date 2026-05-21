@@ -32,6 +32,16 @@ function fmtShort(n) {
   return v.toLocaleString("en");
 }
 
+// "2026-05" → "May 2026"
+function fmtMonth(m) {
+  if(!m) return "";
+  try {
+    const [y, mo] = m.split("-");
+    const date = new Date(parseInt(y), parseInt(mo)-1, 1);
+    return date.toLocaleDateString("en-GB", { month:"long", year:"numeric" });
+  } catch { return m; }
+}
+
 function Avatar({name,size=32}){
   const initials=name.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase();
   const palettes=[["#DBEAFE","#1D4ED8"],["#D1FAE5","#065F46"],["#EDE9FE","#5B21B6"],["#FEF3C7","#92400E"]];
@@ -79,6 +89,8 @@ export default function Portal(){
   // Collection
   const[collLogs,setCollLogs]=useState([]);
   const[collView,setCollView]=useState("log");
+  const[collFilterProp,setCollFilterProp]=useState("");
+  const[collFilterMonth,setCollFilterMonth]=useState("");
   const[collForm,setCollForm]=useState({property_id:"",month:new Date().toISOString().slice(0,7),total_invoices:"",total_revenue_share:"",total_collection:"",notes:""});
   const[editingLog,setEditingLog]=useState(null);
 
@@ -167,6 +179,117 @@ export default function Portal(){
     });
   },[settings]);
 
+  // Filtered logs
+  const filteredLogs = collLogs.filter(log=>{
+    if(collFilterProp && String(log.property_id)!==String(collFilterProp)) return false;
+    if(collFilterMonth && log.month!==collFilterMonth) return false;
+    return true;
+  });
+
+  // PDF Export function
+  const exportCollectionPDF = (logs, filterProp, filterMonth, props, settings) => {
+    const logoUrl = settings?.logo_url || "";
+    const appName = settings?.app_name || "Savills Egypt CA";
+    const tagline = settings?.portal_tagline || "Client Accounting · Property Management";
+    const accentColor = settings?.accent_color || "#FEDE07";
+
+    // Build date range label
+    let dateLabel = "All periods";
+    if(filterMonth) dateLabel = fmtMonth(filterMonth);
+    else if(logs.length>0){
+      const months = [...new Set(logs.map(l=>l.month))].sort();
+      if(months.length>1) dateLabel = `${fmtMonth(months[0])} – ${fmtMonth(months[months.length-1])}`;
+      else if(months.length===1) dateLabel = fmtMonth(months[0]);
+    }
+
+    const propLabel = filterProp
+      ? (props.find(p=>String(p.id)===String(filterProp))?.name || "")
+      : "All Properties";
+
+    const rowsHTML = [...new Set(logs.map(l=>l.property_name))].map(propName=>{
+      const propLogs = logs.filter(l=>l.property_name===propName);
+      return propLogs.map((log,idx)=>{
+        const rate = log.total_invoices>0?Math.round(log.total_collection/log.total_invoices*100):0;
+        const rateColor = rate>=90?"#2CA01C":rate>=70?"#B45309":"#C80C0F";
+        const rateBg = rate>=90?"#F2FBF0":rate>=70?"#FFFBEB":"#FEF2F2";
+        return `<tr style="background:${idx%2===0?"#fff":"#F8F9FA"}">
+          <td style="padding:10px 14px;font-weight:${idx===0?700:400};color:${idx===0?"#1C1C1C":"#57647A"};border-bottom:1px solid #EEF0F3">${idx===0?propName:""}</td>
+          <td style="padding:10px 14px;color:#57647A;border-bottom:1px solid #EEF0F3">${fmtMonth(log.month)}</td>
+          <td style="padding:10px 14px;color:#57647A;border-bottom:1px solid #EEF0F3">EGP ${fmtShort(log.total_invoices)}</td>
+          <td style="padding:10px 14px;color:#57647A;border-bottom:1px solid #EEF0F3">EGP ${fmtShort(log.total_revenue_share)}</td>
+          <td style="padding:10px 14px;font-weight:600;color:#2CA01C;border-bottom:1px solid #EEF0F3">EGP ${fmtShort(log.total_collection)}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3"><span style="background:${rateBg};color:${rateColor};padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">${rate}%</span></td>
+        </tr>`;
+      }).join("");
+    }).join("");
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Collection Report — ${dateLabel}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#fff; color:#1C1C1C; }
+  @media print {
+    @page { margin: 18mm 16mm; size: A4; }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .no-print { display:none !important; }
+  }
+</style>
+</head><body>
+  <!-- Top accent bar -->
+  <div style="height:5px;background:${accentColor};margin-bottom:0"></div>
+
+  <!-- Header -->
+  <div style="padding:24px 32px 20px;border-bottom:1px solid #E3E8EF;display:flex;align-items:center;gap:14px">
+    ${logoUrl?`<img src="${logoUrl}" alt="${appName}" style="height:44px;border-radius:6px;object-fit:contain"/>`:
+      `<div style="width:44px;height:44px;background:${accentColor};border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900">${appName[0]||"S"}</div>`}
+    <div>
+      <div style="font-size:16px;font-weight:700;color:#1C1C1C">${appName}</div>
+      <div style="font-size:11px;color:#8C96A3;letter-spacing:0.4px">${tagline}</div>
+    </div>
+  </div>
+
+  <!-- Report title -->
+  <div style="padding:24px 32px 0">
+    <div style="font-size:11px;font-weight:600;color:#8C96A3;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Collection Report</div>
+    <div style="font-size:22px;font-weight:700;color:#1C1C1C;margin-bottom:4px">Collection Report — ${propLabel}</div>
+    <div style="font-size:13px;color:#57647A">${dateLabel}</div>
+    <div style="height:2px;background:linear-gradient(to right,#C80C0F,${accentColor});border-radius:2px;margin-top:16px"></div>
+  </div>
+
+  <!-- Table -->
+  <div style="padding:20px 32px">
+    <table style="width:100%;border-collapse:collapse;border:1px solid #E3E8EF;border-radius:8px;overflow:hidden">
+      <thead>
+        <tr style="background:#F8F9FA">
+          <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#57647A;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E3E8EF">Property</th>
+          <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#57647A;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E3E8EF">Month</th>
+          <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#57647A;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E3E8EF">Invoices</th>
+          <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#57647A;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E3E8EF">Rev. Share</th>
+          <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#57647A;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E3E8EF">Collection</th>
+          <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#57647A;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E3E8EF">Rate</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHTML}</tbody>
+    </table>
+  </div>
+
+  <!-- Footer -->
+  <div style="padding:16px 32px 24px;border-top:1px solid #EEF0F3;display:flex;justify-content:space-between;align-items:center">
+    <div style="font-size:11px;color:#8C96A3;line-height:1.6">
+      Generated by <strong style="color:#57647A">${appName}</strong> · ${tagline}<br>
+      Generated on ${new Date().toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"})}
+    </div>
+    <div style="font-size:11px;color:#C4CBD6">Confidential</div>
+  </div>
+</body></html>`;
+
+    const win = window.open("", "_blank");
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(()=>{ win.print(); }, 500);
+  };
+
   const loadActivities=async()=>{
     let url=`/activity-logs?days=${actFilterDays}`;
     if(actFilterUser)url+=`&user_id=${actFilterUser}`;
@@ -186,7 +309,7 @@ export default function Portal(){
     ?["properties","reports","collection","email","manage-reports","users","activity","settings"]
     :isEditor
     ?["properties","reports","collection","email","activity"]
-    :["properties","reports","activity"];
+    :["properties","reports","collection","activity"];
 
   const tabLabels={
     properties:"Properties",
@@ -253,7 +376,7 @@ export default function Portal(){
             return(
               <div key={i} style={{background:QB.bgSidebar,borderRadius:QB.radiusMD,padding:"8px 10px",border:`1px solid ${QB.borderLight}`}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                  <span style={{fontSize:11,fontWeight:600,color:QB.textSecondary}}>{d.month}</span>
+                  <span style={{fontSize:11,fontWeight:600,color:QB.textSecondary}}>{fmtMonth(d.month)}</span>
                   <RateBadge rate={rate}/>
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4}}>
@@ -596,7 +719,7 @@ export default function Portal(){
         {/* ══════════════════════════════════════════════════════════════════
             COLLECTION TAB — Log CRUD
         ══════════════════════════════════════════════════════════════════ */}
-        {tab==="collection"&&isEditor&&<>
+        {tab==="collection"&&<>
           {/* Sub tabs */}
           <div style={{display:"flex",gap:0,borderBottom:`2px solid ${QB.borderLight}`,marginBottom:24}}>
             {[{id:"log",label:"Collection Log"},{id:"add",label:editingLog?"Edit Record":"Add Record"}].map(v=>(
@@ -606,42 +729,63 @@ export default function Portal(){
 
           {/* Collection Log table */}
           {collView==="log"&&<div style={s.card}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:10}}>
               <div style={s.cardTitle}>Collection Records</div>
-              <button style={{...s.btnP,padding:"7px 16px",fontSize:12}} onClick={()=>{setEditingLog(null);setCollForm({property_id:"",month:new Date().toISOString().slice(0,7),total_invoices:"",total_revenue_share:"",total_collection:"",notes:""});setCollView("add");}}>+ Add Record</button>
+              <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                {/* Filter: Property */}
+                <select style={{...s.input,width:150,fontSize:12}} value={collFilterProp} onChange={e=>setCollFilterProp(e.target.value)}>
+                  <option value="">All properties</option>
+                  {properties.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                {/* Filter: Month */}
+                <input type="month" style={{...s.input,width:150,fontSize:12}} value={collFilterMonth} onChange={e=>setCollFilterMonth(e.target.value)} placeholder="All months"/>
+                {/* Export PDF */}
+                <button style={{...s.btnS,padding:"7px 14px",fontSize:12,display:"flex",alignItems:"center",gap:5}}
+                  onClick={()=>exportCollectionPDF(filteredLogs,collFilterProp,collFilterMonth,properties,settings)}>
+                  📄 Export PDF
+                </button>
+                {/* Add Record — editors only */}
+                {isEditor&&<button style={{...s.btnP,padding:"7px 16px",fontSize:12}} onClick={()=>{setEditingLog(null);setCollForm({property_id:"",month:new Date().toISOString().slice(0,7),total_invoices:"",total_revenue_share:"",total_collection:"",notes:""});setCollView("add");}}>+ Add Record</button>}
+              </div>
             </div>
-            {collLogs.length===0?<Empty text="No collection records yet"/>:(
+            {filteredLogs.length===0?<Empty text="No collection records match your filters"/>:(
               <div style={{overflowX:"auto"}}>
                 <table style={{width:"100%",borderCollapse:"collapse"}}>
                   <thead><tr>
-                    {["Property","Month","Invoices","Rev. Share","Collection","Rate","By",""].map((h,i)=><th key={i} style={s.th}>{h}</th>)}
+                    {["Property","Month","Invoices","Rev. Share","Collection","Rate","By",...(isEditor?[""]:[])].map((h,i)=><th key={i} style={s.th}>{h}</th>)}
                   </tr></thead>
                   <tbody>
-                    {collLogs.map(log=>{
-                      const rate=log.total_invoices>0?Math.round(log.total_collection/log.total_invoices*100):0;
-                      return<tr key={log.id}>
-                        <td style={{...s.td,fontWeight:600}}>{log.property_name}</td>
-                        <td style={{...s.td,color:QB.textSecondary}}>{log.month}</td>
-                        <td style={s.td}>EGP {fmtShort(log.total_invoices)}</td>
-                        <td style={s.td}>EGP {fmtShort(log.total_revenue_share)}</td>
-                        <td style={{...s.td,fontWeight:600,color:QB.green}}>EGP {fmtShort(log.total_collection)}</td>
-                        <td style={s.td}><RateBadge rate={rate}/></td>
-                        <td style={{...s.td,color:QB.textMuted,fontSize:12}}>{log.updated_by_name||log.created_by_name}</td>
-                        <td style={s.td}>
-                          <div style={{display:"flex",gap:8}}>
-                            <button style={{...s.btnS,padding:"3px 10px",fontSize:12}} onClick={()=>{
-                              setEditingLog(log);
-                              setCollForm({property_id:log.property_id,month:log.month,total_invoices:log.total_invoices,total_revenue_share:log.total_revenue_share,total_collection:log.total_collection,notes:log.notes||""});
-                              setCollView("add");
-                            }}>Edit</button>
-                            {isAdmin&&<button style={{...s.btnS,padding:"3px 10px",fontSize:12,color:QB.red,borderColor:QB.redBorder}} onClick={async()=>{
-                              if(!confirm("Delete this record?"))return;
-                              await apiFetch(`/collection-logs/${log.id}`,{method:"DELETE"});
-                              load();flash("Record deleted");
-                            }}>Delete</button>}
-                          </div>
-                        </td>
-                      </tr>;
+                    {/* Group by property */}
+                    {[...new Set(filteredLogs.map(l=>l.property_name))].map(propName=>{
+                      const propLogs=filteredLogs.filter(l=>l.property_name===propName);
+                      return propLogs.map((log,idx)=>{
+                        const rate=log.total_invoices>0?Math.round(log.total_collection/log.total_invoices*100):0;
+                        return<tr key={log.id} style={{background:idx%2===0?QB.bgCard:QB.bgSidebar}}>
+                          <td style={{...s.td,fontWeight:idx===0?700:400,color:idx===0?QB.textPrimary:QB.textSecondary}}>
+                            {idx===0?propName:""}
+                          </td>
+                          <td style={{...s.td,color:QB.textSecondary}}>{fmtMonth(log.month)}</td>
+                          <td style={s.td}>EGP {fmtShort(log.total_invoices)}</td>
+                          <td style={s.td}>EGP {fmtShort(log.total_revenue_share)}</td>
+                          <td style={{...s.td,fontWeight:600,color:QB.green}}>EGP {fmtShort(log.total_collection)}</td>
+                          <td style={s.td}><RateBadge rate={rate}/></td>
+                          <td style={{...s.td,color:QB.textMuted,fontSize:12}}>{log.updated_by_name||log.created_by_name}</td>
+                          {isEditor&&<td style={s.td}>
+                            <div style={{display:"flex",gap:6}}>
+                              <button style={{...s.btnS,padding:"3px 10px",fontSize:12}} onClick={()=>{
+                                setEditingLog(log);
+                                setCollForm({property_id:log.property_id,month:log.month,total_invoices:log.total_invoices,total_revenue_share:log.total_revenue_share,total_collection:log.total_collection,notes:log.notes||""});
+                                setCollView("add");
+                              }}>Edit</button>
+                              {isAdmin&&<button style={{...s.btnS,padding:"3px 10px",fontSize:12,color:QB.red,borderColor:QB.redBorder}} onClick={async()=>{
+                                if(!confirm("Delete this record?"))return;
+                                await apiFetch(`/collection-logs/${log.id}`,{method:"DELETE"});
+                                load();flash("Record deleted");
+                              }}>Delete</button>}
+                            </div>
+                          </td>}
+                        </tr>;
+                      });
                     })}
                   </tbody>
                 </table>
@@ -661,6 +805,7 @@ export default function Portal(){
               </div>
               <div><label style={s.label}>Month</label>
                 <input type="month" style={s.input} value={collForm.month} onChange={e=>setCollForm(f=>({...f,month:e.target.value}))} disabled={!!editingLog}/>
+              {editingLog&&collForm.month&&<div style={{fontSize:11,color:QB.textMuted,marginTop:4}}>{fmtMonth(collForm.month)}</div>}
               </div>
               <div><label style={s.label}>Total Invoices (EGP)</label>
                 <input type="number" style={s.input} value={collForm.total_invoices} onChange={e=>setCollForm(f=>({...f,total_invoices:e.target.value}))} placeholder="0.00"/>
