@@ -300,6 +300,7 @@ export default function Portal(){
       <tbody>${rowsHTML}
         <tr style="background:#F8F9FA;border-top:2px solid #E3E8EF">
           <td style="padding:10px 14px;font-weight:700;color:#1C1C1C;border-bottom:1px solid #EEF0F3;font-size:12px;text-transform:uppercase">TOTAL</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3"></td>
           <td style="padding:10px 14px;font-weight:700;color:#1C1C1C;border-bottom:1px solid #EEF0F3">EGP ${fmtShort(logs.reduce((a,l)=>a+(parseFloat(l.total_invoices)||0),0))}</td>
           <td style="padding:10px 14px;font-weight:700;color:#1C1C1C;border-bottom:1px solid #EEF0F3">EGP ${fmtShort(logs.reduce((a,l)=>a+(parseFloat(l.total_revenue_share)||0),0))}</td>
           <td style="padding:10px 14px;font-weight:700;color:#2CA01C;border-bottom:1px solid #EEF0F3">EGP ${fmtShort(logs.reduce((a,l)=>a+(parseFloat(l.total_collection)||0),0))}</td>
@@ -889,8 +890,9 @@ export default function Portal(){
                         );
                       });
                       if(!collFilterProp&&propLogs.length>1) rows.push(
-                        <tr key={`sub-${propName}`} style={{background:"#EEF5FB"}}>
+                        <tr key={`sub-${propName}`} style={{background:"#EEF5FB",borderTop:`1px dashed ${QB.borderCard}`}}>
                           <td style={{...s.td,fontWeight:600,color:QB.blue,fontSize:12,paddingLeft:36}}>{propName} subtotal</td>
+                          <td style={s.td}/>
                           <td style={{...s.td,fontWeight:600,color:QB.textPrimary,fontSize:12}}>EGP {fmtShort(subInv)}</td>
                           <td style={{...s.td,fontWeight:600,color:QB.textPrimary,fontSize:12}}>EGP {fmtShort(subRS)}</td>
                           <td style={{...s.td,fontWeight:600,color:QB.green,fontSize:12}}>EGP {fmtShort(subColl)}</td>
