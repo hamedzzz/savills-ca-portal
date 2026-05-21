@@ -471,7 +471,7 @@ def delete_report(report_id: int, admin=Depends(require_admin)):
 # ── Collection Logs CRUD ──────────────────────────────────────────────────────
 @app.get("/collection-logs")
 def list_collection_logs(property_id: int = None, month: str = None,
-                          current_user=Depends(require_editor)):
+                          current_user=Depends(get_current_user)):
     conn = get_db(); c = conn.cursor()
     q = """SELECT cl.*, p.name as property_name,
                   u.full_name as created_by_name,
