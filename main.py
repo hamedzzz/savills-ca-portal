@@ -46,7 +46,8 @@ def init_db():
 
     c.execute("""CREATE TABLE IF NOT EXISTS properties (
         id SERIAL PRIMARY KEY, name TEXT UNIQUE NOT NULL, location TEXT DEFAULT '',
-        system TEXT DEFAULT '', logo_url TEXT DEFAULT '', is_active BOOLEAN DEFAULT TRUE
+        system TEXT DEFAULT '', logo_url TEXT DEFAULT '', is_active BOOLEAN DEFAULT TRUE,
+        landlord_name TEXT DEFAULT ''
     )""")
 
     c.execute("""CREATE TABLE IF NOT EXISTS user_property_access (
@@ -105,6 +106,7 @@ def init_db():
 
     # ── Safe migrations (use savepoints — won't abort on duplicate) ────────────
     safe_exec(c, conn, "ALTER TABLE properties ADD COLUMN IF NOT EXISTS logo_url TEXT DEFAULT ''")
+    safe_exec(c, conn, "ALTER TABLE properties ADD COLUMN IF NOT EXISTS landlord_name TEXT DEFAULT ''")
     safe_exec(c, conn, "ALTER TABLE pbi_reports ADD COLUMN IF NOT EXISTS embed_url TEXT DEFAULT ''")
     safe_exec(c, conn, "ALTER TABLE pbi_reports ADD COLUMN IF NOT EXISTS category TEXT DEFAULT ''")
     safe_exec(c, conn, "ALTER TABLE collection_logs ADD COLUMN IF NOT EXISTS total_revenue_share NUMERIC DEFAULT 0")
@@ -218,7 +220,7 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None; is_active: Optional[bool] = None
 
 class PropertyCreate(BaseModel):
-    name: str; location: str = ""; system: str = ""; logo_url: str = ""
+    name: str; location: str = ""; system: str = ""; logo_url: str = ""; landlord_name: str = ""
 
 class CollectionLogCreate(BaseModel):
     property_id: int; month: str
@@ -334,8 +336,8 @@ def list_properties(current_user=Depends(get_current_user)):
 @app.post("/properties", status_code=201)
 def create_property(data: PropertyCreate, admin=Depends(require_admin)):
     conn = get_db(); c = conn.cursor()
-    c.execute("INSERT INTO properties (name,location,system,logo_url) VALUES (%s,%s,%s,%s) RETURNING id",
-             (data.name, data.location, data.system, data.logo_url))
+    c.execute("INSERT INTO properties (name,location,system,logo_url,landlord_name) VALUES (%s,%s,%s,%s,%s) RETURNING id",
+             (data.name, data.location, data.system, data.logo_url, data.landlord_name))
     new_id = c.fetchone()["id"]
     log_activity(conn, admin["id"], "added property", "property", data.name)
     conn.commit(); conn.close()
@@ -344,7 +346,7 @@ def create_property(data: PropertyCreate, admin=Depends(require_admin)):
 @app.patch("/properties/{prop_id}")
 def update_property(prop_id: int, data: dict, admin=Depends(require_admin)):
     conn = get_db(); c = conn.cursor()
-    allowed = {k: v for k, v in data.items() if k in ("name","location","system","logo_url","is_active")}
+    allowed = {k: v for k, v in data.items() if k in ("name","location","system","logo_url","landlord_name","is_active")}
     if not allowed: raise HTTPException(400, "Nothing to update")
     set_clause = ", ".join(f"{k}=%s" for k in allowed)
     c.execute(f"UPDATE properties SET {set_clause} WHERE id=%s", (*allowed.values(), prop_id))
@@ -412,6 +414,19 @@ def set_user_access(user_id: int, data: dict, admin=Depends(require_admin)):
     return {"ok": True}
 
 # ── PBI Reports ───────────────────────────────────────────────────────────────
+@app.post("/reports/{report_id}/view")
+def log_report_view(report_id: int, current_user=Depends(get_current_user)):
+    """Log when a user views a report"""
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT r.report_name, p.name as property_name FROM pbi_reports r JOIN properties p ON r.property_id=p.id WHERE r.id=%s", (report_id,))
+    row = c.fetchone()
+    if row:
+        log_activity(conn, current_user["id"], "viewed report", "report",
+                     row["report_name"], f"property={row['property_name']}")
+        conn.commit()
+    conn.close()
+    return {"ok": True}
+
 @app.get("/reports")
 def list_reports(current_user=Depends(get_current_user)):
     conn = get_db(); c = conn.cursor()
@@ -702,6 +717,22 @@ def update_settings(data: dict, admin=Depends(require_admin)):
                  ", ".join(updated))
     conn.commit(); conn.close()
     return {"ok": True, "updated": updated}
+
+# ── Activity Log Management ───────────────────────────────────────────────────
+@app.delete("/activity-logs/{log_id}")
+def delete_activity_log(log_id: int, admin=Depends(require_admin)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("DELETE FROM activity_logs WHERE id=%s", (log_id,))
+    conn.commit(); conn.close()
+    return {"ok": True}
+
+@app.delete("/activity-logs")
+def clear_activity_logs(admin=Depends(require_admin)):
+    """Clear all activity logs"""
+    conn = get_db(); c = conn.cursor()
+    c.execute("DELETE FROM activity_logs")
+    conn.commit(); conn.close()
+    return {"ok": True}
 
 # ── Power BI ──────────────────────────────────────────────────────────────────
 @app.get("/pbi/embed-token/{report_id}")
