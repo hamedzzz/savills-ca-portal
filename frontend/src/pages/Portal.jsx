@@ -155,10 +155,9 @@ export default function Portal(){
       if(acc)setUserAccess(acc);
       if(el)setEmailLogs(el);
     }
-    if(isEditor){
-      const cl=await apiFetch("/collection-logs");
-      if(cl)setCollLogs(cl);
-    }
+    // All users can view collection logs
+    const cl=await apiFetch("/collection-logs");
+    if(cl)setCollLogs(cl);
     if(!isAdmin){
       const ma=await apiFetch("/user-access/me");
       if(ma)setMyAccess(ma.property_ids.length>0?ma.property_ids:null);
