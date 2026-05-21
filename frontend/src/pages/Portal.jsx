@@ -841,54 +841,64 @@ export default function Portal(){
                   </tr></thead>
                   <tbody>
                     {/* Group by property */}
-                    {[...new Set(filteredLogs.map(l=>l.property_name))].map((propName,propIdx,arr)=>{
+                    {[...new Set(filteredLogs.map(l=>l.property_name))].flatMap((propName,propIdx)=>{
                       const propLogs=filteredLogs.filter(l=>l.property_name===propName);
-                      return [
-                        /* Property header row */
-                        propIdx>0&&<tr key={`sep-${propName}`}><td colSpan={9} style={{padding:"4px 0",background:QB.bgPage,borderBottom:`2px solid ${QB.borderLight}`}}></td></tr>,
-                        ...propLogs.map((log,idx)=>{
+                      const subInv=propLogs.reduce((a,l)=>a+(parseFloat(l.total_invoices)||0),0);
+                      const subColl=propLogs.reduce((a,l)=>a+(parseFloat(l.total_collection)||0),0);
+                      const subRS=propLogs.reduce((a,l)=>a+(parseFloat(l.total_revenue_share)||0),0);
+                      const subRate=subInv>0?Math.round(subColl/subInv*100):0;
+                      const rows=[];
+                      if(propIdx>0) rows.push(
+                        <tr key={`sep-${propName}`}><td colSpan={9} style={{padding:"4px 0",background:QB.bgPage,borderBottom:`2px solid ${QB.borderLight}`}}></td></tr>
+                      );
+                      propLogs.forEach((log,idx)=>{
                         const rate=log.total_invoices>0?Math.round(log.total_collection/log.total_invoices*100):0;
-                        return<tr key={log.id} style={{background:QB.bgCard}}>
-                          {!collFilterProp&&<td style={{...s.td,fontWeight:600,color:QB.textPrimary}}>
-                            {idx===0
-                              ?<div style={{display:"flex",alignItems:"center",gap:8}}>
-                                <PropLogo url={filteredLogs.find(l=>l.property_name===propName)?.logo_url||""} name={propName} size={20}/>
-                                {propName}
+                        rows.push(
+                          <tr key={log.id} style={{background:QB.bgCard}}>
+                            {!collFilterProp&&<td style={{...s.td,fontWeight:600,color:QB.textPrimary}}>
+                              {idx===0
+                                ?<div style={{display:"flex",alignItems:"center",gap:8}}>
+                                  <PropLogo url={filteredLogs.find(l=>l.property_name===propName)?.logo_url||""} name={propName} size={20}/>
+                                  {propName}
+                                </div>
+                                :<span style={{color:QB.textMuted,fontSize:11,paddingLeft:28}}>↳</span>
+                              }
+                            </td>}
+                            <td style={{...s.td,color:QB.textSecondary}}>{fmtMonth(log.month)}</td>
+                            <td style={s.td}>EGP {fmtShort(log.total_invoices)}</td>
+                            <td style={s.td}>EGP {fmtShort(log.total_revenue_share)}</td>
+                            <td style={{...s.td,fontWeight:600,color:QB.green}}>EGP {fmtShort(log.total_collection)}</td>
+                            <td style={s.td}><RateBadge rate={rate}/></td>
+                            <td style={{...s.td,color:QB.textSecondary,fontSize:12,maxWidth:180}}>{log.notes||<span style={{color:QB.textMuted}}>—</span>}</td>
+                            <td style={{...s.td,color:QB.textMuted,fontSize:12}}>{log.updated_by_name||log.created_by_name}</td>
+                            {isEditor&&<td style={s.td}>
+                              <div style={{display:"flex",gap:6}}>
+                                <button style={{...s.btnS,padding:"3px 10px",fontSize:12}} onClick={()=>{
+                                  setEditingLog(log);
+                                  setCollForm({property_id:log.property_id,month:log.month,total_invoices:log.total_invoices,total_revenue_share:log.total_revenue_share,total_collection:log.total_collection,notes:log.notes||""});
+                                  setCollView("add");
+                                }}>Edit</button>
+                                {isAdmin&&<button style={{...s.btnS,padding:"3px 10px",fontSize:12,color:QB.red,borderColor:QB.redBorder}} onClick={async()=>{
+                                  if(!confirm("Delete this record?"))return;
+                                  await apiFetch(`/collection-logs/${log.id}`,{method:"DELETE"});
+                                  load();flash("Record deleted");
+                                }}>Delete</button>}
                               </div>
-                              :<span style={{color:QB.textMuted,fontSize:11,paddingLeft:28}}>↳</span>
-                            }
-                          </td>}
-                          <td style={{...s.td,color:QB.textSecondary}}>{fmtMonth(log.month)}</td>
-                          <td style={s.td}>EGP {fmtShort(log.total_invoices)}</td>
-                          <td style={s.td}>EGP {fmtShort(log.total_revenue_share)}</td>
-                          <td style={{...s.td,fontWeight:600,color:QB.green}}>EGP {fmtShort(log.total_collection)}</td>
-                          <td style={s.td}><RateBadge rate={rate}/></td>
-                          <td style={{...s.td,color:QB.textSecondary,fontSize:12,maxWidth:180}}>{log.notes||<span style={{color:QB.textMuted}}>—</span>}</td>
-                          <td style={{...s.td,color:QB.textMuted,fontSize:12}}>{log.updated_by_name||log.created_by_name}</td>
-                          {isEditor&&<td style={s.td}>
-                            <div style={{display:"flex",gap:6}}>
-                              <button style={{...s.btnS,padding:"3px 10px",fontSize:12}} onClick={()=>{
-                                setEditingLog(log);
-                                setCollForm({property_id:log.property_id,month:log.month,total_invoices:log.total_invoices,total_revenue_share:log.total_revenue_share,total_collection:log.total_collection,notes:log.notes||""});
-                                setCollView("add");
-                              }}>Edit</button>
-                              {isAdmin&&<button style={{...s.btnS,padding:"3px 10px",fontSize:12,color:QB.red,borderColor:QB.redBorder}} onClick={async()=>{
-                                if(!confirm("Delete this record?"))return;
-                                await apiFetch(`/collection-logs/${log.id}`,{method:"DELETE"});
-                                load();flash("Record deleted");
-                              }}>Delete</button>}
-                            </div>
-                          </td>}
-                        </tr>;
-                        (!collFilterProp&&propLogs.length>1)&&<tr key={`sub-${propName}`} style={{background:"#EEF5FB"}}>
+                            </td>}
+                          </tr>
+                        );
+                      });
+                      if(!collFilterProp&&propLogs.length>1) rows.push(
+                        <tr key={`sub-${propName}`} style={{background:"#EEF5FB"}}>
                           <td style={{...s.td,fontWeight:600,color:QB.blue,fontSize:12,paddingLeft:36}}>{propName} subtotal</td>
-                          <td style={{...s.td,fontWeight:600,color:QB.textPrimary,fontSize:12}}>EGP {fmtShort(propLogs.reduce((a,l)=>a+(parseFloat(l.total_invoices)||0),0))}</td>
-                          <td style={{...s.td,fontWeight:600,color:QB.textPrimary,fontSize:12}}>EGP {fmtShort(propLogs.reduce((a,l)=>a+(parseFloat(l.total_revenue_share)||0),0))}</td>
-                          <td style={{...s.td,fontWeight:600,color:QB.green,fontSize:12}}>EGP {fmtShort(propLogs.reduce((a,l)=>a+(parseFloat(l.total_collection)||0),0))}</td>
-                          <td style={s.td}><RateBadge rate={Math.round(propLogs.reduce((a,l)=>a+(parseFloat(l.total_collection)||0),0)/Math.max(propLogs.reduce((a,l)=>a+(parseFloat(l.total_invoices)||0),0),1)*100)}/></td>
+                          <td style={{...s.td,fontWeight:600,color:QB.textPrimary,fontSize:12}}>EGP {fmtShort(subInv)}</td>
+                          <td style={{...s.td,fontWeight:600,color:QB.textPrimary,fontSize:12}}>EGP {fmtShort(subRS)}</td>
+                          <td style={{...s.td,fontWeight:600,color:QB.green,fontSize:12}}>EGP {fmtShort(subColl)}</td>
+                          <td style={s.td}><RateBadge rate={subRate}/></td>
                           <td style={s.td}/><td style={s.td}/>{isEditor&&<td style={s.td}/>}
-                        </tr>,
-                      ].filter(Boolean);
+                        </tr>
+                      );
+                      return rows;
                     })}
                     {/* Totals row */}
                     {filteredLogs.length>0&&<tr style={{background:QB.bgSidebar,borderTop:`2px solid ${QB.borderCard}`}}>
