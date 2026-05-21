@@ -840,11 +840,25 @@ export default function Portal(){
             <div style={{marginBottom:8}}>
               <label style={s.label}>Logo URL</label>
               <input style={s.input} value={settingsForm.logo_url||""} onChange={e=>setSettingsForm(f=>({...f,logo_url:e.target.value}))} placeholder="https://..."/>
+              <div style={{fontSize:11,color:QB.textMuted,marginTop:4,lineHeight:1.5}}>
+                💡 Use a direct image URL (PNG/SVG). Best option: upload to GitHub at
+                <code style={{background:QB.bgSidebar,padding:"0 4px",borderRadius:3,fontSize:10}}> frontend/public/savills-logo.svg</code>
+                then use <code style={{background:QB.bgSidebar,padding:"0 4px",borderRadius:3,fontSize:10}}>https://savills-ca-portal.vercel.app/savills-logo.svg</code>
+              </div>
             </div>
             {settingsForm.logo_url&&(
-              <div style={{marginBottom:14,padding:"10px 12px",background:QB.bgSidebar,borderRadius:QB.radiusMD,border:`1px solid ${QB.borderLight}`,display:"inline-flex",alignItems:"center",gap:10}}>
-                <img src={settingsForm.logo_url} alt="preview" style={{height:36,borderRadius:4,objectFit:"contain"}} onError={e=>e.target.style.display="none"}/>
-                <span style={{fontSize:12,color:QB.textMuted}}>Logo preview</span>
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:11,color:QB.textMuted,marginBottom:6}}>Preview:</div>
+                <div style={{padding:"12px 16px",background:QB.bgSidebar,borderRadius:QB.radiusMD,border:`1px solid ${QB.borderLight}`,display:"flex",alignItems:"center",gap:12,minHeight:60}}>
+                  <img
+                    src={settingsForm.logo_url}
+                    alt="logo preview"
+                    style={{height:40,maxWidth:120,objectFit:"contain",borderRadius:4}}
+                    onLoad={e=>{e.target.style.opacity=1;e.target.nextSibling.style.display="none";}}
+                    onError={e=>{e.target.style.display="none";e.target.nextSibling.textContent="⚠ Could not load image — check the URL";e.target.nextSibling.style.color=QB.red;}}
+                  />
+                  <span style={{fontSize:12,color:QB.textSecondary}}>Loading preview...</span>
+                </div>
               </div>
             )}
           </div>
