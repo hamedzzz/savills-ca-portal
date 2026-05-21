@@ -239,7 +239,7 @@ export default function Portal(){
         const rateColor = rate>=90?"#2CA01C":rate>=70?"#B45309":"#C80C0F";
         const rateBg = rate>=90?"#F2FBF0":rate>=70?"#FFFBEB":"#FEF2F2";
         return `<tr style="background:${idx%2===0?"#fff":"#F8F9FA"}">
-          <td style="padding:10px 14px;font-weight:${idx===0?700:400};color:${idx===0?"#1C1C1C":"#57647A"};border-bottom:1px solid #EEF0F3">${idx===0?propName:""}</td>
+          ${!filterProp?`<td style="padding:10px 14px;font-weight:${idx===0?700:400};color:${idx===0?"#1C1C1C":"#57647A"};border-bottom:1px solid #EEF0F3">${idx===0?propName:""}</td>`:""}
           <td style="padding:10px 14px;color:#57647A;border-bottom:1px solid #EEF0F3">${fmtMonth(log.month)}</td>
           <td style="padding:10px 14px;color:#57647A;border-bottom:1px solid #EEF0F3">EGP ${fmtShort(log.total_invoices)}</td>
           <td style="padding:10px 14px;color:#57647A;border-bottom:1px solid #EEF0F3">EGP ${fmtShort(log.total_revenue_share)}</td>
@@ -288,7 +288,7 @@ export default function Portal(){
     <table style="width:100%;border-collapse:collapse;border:1px solid #E3E8EF;border-radius:8px;overflow:hidden">
       <thead>
         <tr style="background:#F8F9FA">
-          <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#57647A;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E3E8EF">Property</th>
+          ${!filterProp?`<th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#57647A;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E3E8EF">Property</th>`:""}
           <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#57647A;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E3E8EF">Month</th>
           <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#57647A;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E3E8EF">Invoices</th>
           <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#57647A;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E3E8EF">Rev. Share</th>
@@ -299,8 +299,7 @@ export default function Portal(){
       </thead>
       <tbody>${rowsHTML}
         <tr style="background:#F8F9FA;border-top:2px solid #E3E8EF">
-          ${!filterProp?`<td style="padding:10px 14px;font-weight:700;color:#1C1C1C;border-bottom:1px solid #EEF0F3;font-size:12px;text-transform:uppercase">TOTAL</td>`:""}
-          <td style="padding:10px 14px;font-weight:700;color:#1C1C1C;border-bottom:1px solid #EEF0F3;font-size:12px;text-transform:uppercase">${filterProp?"TOTAL":""}</td>
+          <td style="padding:10px 14px;font-weight:700;color:#1C1C1C;border-bottom:1px solid #EEF0F3;font-size:12px;text-transform:uppercase">TOTAL</td>
           <td style="padding:10px 14px;font-weight:700;color:#1C1C1C;border-bottom:1px solid #EEF0F3">EGP ${fmtShort(logs.reduce((a,l)=>a+(parseFloat(l.total_invoices)||0),0))}</td>
           <td style="padding:10px 14px;font-weight:700;color:#1C1C1C;border-bottom:1px solid #EEF0F3">EGP ${fmtShort(logs.reduce((a,l)=>a+(parseFloat(l.total_revenue_share)||0),0))}</td>
           <td style="padding:10px 14px;font-weight:700;color:#2CA01C;border-bottom:1px solid #EEF0F3">EGP ${fmtShort(logs.reduce((a,l)=>a+(parseFloat(l.total_collection)||0),0))}</td>
@@ -409,6 +408,17 @@ export default function Portal(){
     const data=propertySummaries[propId]||[];
     if(data.length===0)return<div style={{fontSize:12,color:QB.textMuted,marginBottom:10}}>No collection data yet</div>;
     const maxInv=Math.max(...data.map(d=>parseFloat(d.total_invoices)||0));
+
+    // YTD from all collection logs for this property
+    const currentYear=new Date().getFullYear().toString();
+    const propYtdLogs=collLogs.filter(l=>String(l.property_id)===String(propId)&&l.month?.startsWith(currentYear));
+    const propYtd=propYtdLogs.reduce((acc,l)=>({
+      invoices:   acc.invoices   + (parseFloat(l.total_invoices)||0),
+      collection: acc.collection + (parseFloat(l.total_collection)||0),
+      revShare:   acc.revShare   + (parseFloat(l.total_revenue_share)||0),
+    }),{invoices:0,collection:0,revShare:0});
+    const propYtdRate=propYtd.invoices>0?Math.round(propYtd.collection/propYtd.invoices*100):0;
+
     return(
       <div style={{marginBottom:10}}>
         <div style={{fontSize:11,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em",marginBottom:6}}>Last {data.length} {data.length===1?"month":"months"}</div>
@@ -431,6 +441,21 @@ export default function Portal(){
             );
           })}
         </div>
+
+        {/* YTD Total */}
+        {propYtdLogs.length>0&&(
+          <div style={{marginTop:8,padding:"10px 12px",background:QB.blueLight,borderRadius:QB.radiusMD,border:`1px solid ${QB.blue}22`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <span style={{fontSize:11,fontWeight:700,color:QB.blue,textTransform:"uppercase",letterSpacing:".06em"}}>YTD {currentYear}</span>
+              <RateBadge rate={propYtdRate}/>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4}}>
+              <div><div style={{fontSize:10,color:QB.textSecondary}}>Invoices</div><div style={{fontSize:12,fontWeight:700,color:QB.textPrimary}}>EGP {fmtShort(propYtd.invoices)}</div></div>
+              <div><div style={{fontSize:10,color:QB.textSecondary}}>Collection</div><div style={{fontSize:12,fontWeight:700,color:QB.green}}>EGP {fmtShort(propYtd.collection)}</div></div>
+              <div><div style={{fontSize:10,color:QB.textSecondary}}>Rev. Share</div><div style={{fontSize:12,fontWeight:700,color:QB.blue}}>EGP {fmtShort(propYtd.revShare)}</div></div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -855,7 +880,16 @@ export default function Portal(){
                             </div>
                           </td>}
                         </tr>;
-                      })];
+                        /* Subtotal row per property — only when multiple properties shown */
+                        ,!collFilterProp&&propLogs.length>1&&<tr key={`sub-${propName}`} style={{background:"#EEF5FB"}}>
+                          <td style={{...s.td,fontWeight:600,color:QB.blue,fontSize:12,paddingLeft:36}}>{propName} subtotal</td>
+                          <td style={{...s.td,fontWeight:600,color:QB.textPrimary,fontSize:12}}>EGP {fmtShort(propLogs.reduce((a,l)=>a+(parseFloat(l.total_invoices)||0),0))}</td>
+                          <td style={{...s.td,fontWeight:600,color:QB.textPrimary,fontSize:12}}>EGP {fmtShort(propLogs.reduce((a,l)=>a+(parseFloat(l.total_revenue_share)||0),0))}</td>
+                          <td style={{...s.td,fontWeight:600,color:QB.green,fontSize:12}}>EGP {fmtShort(propLogs.reduce((a,l)=>a+(parseFloat(l.total_collection)||0),0))}</td>
+                          <td style={s.td}><RateBadge rate={Math.round(propLogs.reduce((a,l)=>a+(parseFloat(l.total_collection)||0),0)/Math.max(propLogs.reduce((a,l)=>a+(parseFloat(l.total_invoices)||0),0),1)*100)}/></td>
+                          <td style={s.td}/><td style={s.td}/>{isEditor&&<td style={s.td}/>}
+                        </tr>
+                      ];
                     })}
                     {/* Totals row */}
                     {filteredLogs.length>0&&<tr style={{background:QB.bgSidebar,borderTop:`2px solid ${QB.borderCard}`}}>
