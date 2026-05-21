@@ -880,16 +880,15 @@ export default function Portal(){
                             </div>
                           </td>}
                         </tr>;
-                        /* Subtotal row per property — only when multiple properties shown */
-                        ,!collFilterProp&&propLogs.length>1&&<tr key={`sub-${propName}`} style={{background:"#EEF5FB"}}>
+                        (!collFilterProp&&propLogs.length>1)&&<tr key={`sub-${propName}`} style={{background:"#EEF5FB"}}>
                           <td style={{...s.td,fontWeight:600,color:QB.blue,fontSize:12,paddingLeft:36}}>{propName} subtotal</td>
                           <td style={{...s.td,fontWeight:600,color:QB.textPrimary,fontSize:12}}>EGP {fmtShort(propLogs.reduce((a,l)=>a+(parseFloat(l.total_invoices)||0),0))}</td>
                           <td style={{...s.td,fontWeight:600,color:QB.textPrimary,fontSize:12}}>EGP {fmtShort(propLogs.reduce((a,l)=>a+(parseFloat(l.total_revenue_share)||0),0))}</td>
                           <td style={{...s.td,fontWeight:600,color:QB.green,fontSize:12}}>EGP {fmtShort(propLogs.reduce((a,l)=>a+(parseFloat(l.total_collection)||0),0))}</td>
                           <td style={s.td}><RateBadge rate={Math.round(propLogs.reduce((a,l)=>a+(parseFloat(l.total_collection)||0),0)/Math.max(propLogs.reduce((a,l)=>a+(parseFloat(l.total_invoices)||0),0),1)*100)}/></td>
                           <td style={s.td}/><td style={s.td}/>{isEditor&&<td style={s.td}/>}
-                        </tr>
-                      ];
+                        </tr>,
+                      ].filter(Boolean);
                     })}
                     {/* Totals row */}
                     {filteredLogs.length>0&&<tr style={{background:QB.bgSidebar,borderTop:`2px solid ${QB.borderCard}`}}>
