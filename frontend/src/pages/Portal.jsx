@@ -810,7 +810,7 @@ export default function Portal(){
         {tab==="collection"&&<>
           {/* Sub tabs */}
           <div style={{display:"flex",gap:0,borderBottom:`2px solid ${QB.borderLight}`,marginBottom:24}}>
-            {[{id:"log",label:"Collection Log"},{id:"add",label:editingLog?"Edit Record":"Add Record"}].map(v=>(
+            {[{id:"log",label:"Collection Log"},...(isEditor?[{id:"add",label:editingLog?"Edit Record":"Add Record"}]:[])].map(v=>(
               <button key={v.id} onClick={()=>setCollView(v.id)} style={{padding:"8px 18px",fontSize:13,fontWeight:collView===v.id?600:400,border:"none",borderBottom:collView===v.id?`2px solid ${QB.blue}`:"2px solid transparent",marginBottom:-2,background:"transparent",color:collView===v.id?QB.blue:QB.textSecondary,cursor:"pointer",fontFamily:QB.fontFamily}}>{v.label}</button>
             ))}
           </div>
