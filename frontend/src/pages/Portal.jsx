@@ -40,23 +40,23 @@ function Avatar({name,size=32}){
 }
 
 function Badge({label,color="blue"}){
-  const map={blue:{bg:QB.blueLight,text:QB.blue,border:"#BFDFFA"},green:{bg:QB.greenBg,text:QB.green,border:QB.greenBorder},amber:{bg:QB.amberBg,text:QB.amber,border:QB.amberBorder},red:{bg:QB.redBg,text:QB.red,border:QB.redBorder},purple:{bg:"#EDE9FE",text:"#5B21B6",border:"#C4B5FD"},gray:{bg:"#F1F3F5",text:"#57647A",border:"#D4D9E0"}};
+  const map={blue:{bg:QB_DEFAULT.blueLight,text:QB_DEFAULT.blue,border:"#BFDFFA"},green:{bg:QB_DEFAULT.greenBg,text:QB_DEFAULT.green,border:QB_DEFAULT.greenBorder},amber:{bg:QB_DEFAULT.amberBg,text:QB_DEFAULT.amber,border:QB_DEFAULT.amberBorder},red:{bg:QB_DEFAULT.redBg,text:QB_DEFAULT.red,border:QB_DEFAULT.redBorder},purple:{bg:"#EDE9FE",text:"#5B21B6",border:"#C4B5FD"},gray:{bg:"#F1F3F5",text:"#57647A",border:"#D4D9E0"}};
   const c=map[color]||map.gray;
-  return<span style={{display:"inline-flex",alignItems:"center",padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:600,background:c.bg,color:c.text,border:`1px solid ${c.border}`,fontFamily:QB.fontFamily}}>{label}</span>;
+  return<span style={{display:"inline-flex",alignItems:"center",padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:600,background:c.bg,color:c.text,border:`1px solid ${c.border}`,fontFamily:QB_DEFAULT.fontFamily}}>{label}</span>;
 }
 
 function RateBadge({rate}){return<Badge label={`${rate}%`} color={rate>=90?"green":rate>=70?"amber":"red"}/>;}
 
 function MiniBar({value,max}){
   const pct=max>0?Math.min((value/max)*100,100):0;
-  return<div style={{height:4,background:QB.borderLight,borderRadius:2,marginTop:4}}><div style={{height:4,width:`${pct}%`,background:QB.blue,borderRadius:2}}/></div>;
+  return<div style={{height:4,background:QB_DEFAULT.borderLight,borderRadius:2,marginTop:4}}><div style={{height:4,width:`${pct}%`,background:QB_DEFAULT.blue,borderRadius:2}}/></div>;
 }
 
 // Property logo with PNG fallback
 function PropLogo({url,name,size=36}){
   const[err,setErr]=useState(false);
-  if(url&&!err) return<img src={url} alt={name} onError={()=>setErr(true)} style={{width:size,height:size,borderRadius:QB.radiusMD,objectFit:"contain",border:`1px solid ${QB.borderLight}`,background:"#fff"}}/>;
-  return<div style={{width:size,height:size,borderRadius:QB.radiusMD,background:QB.blueLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.44,fontWeight:700,color:QB.blue}}>{name?.[0]}</div>;
+  if(url&&!err) return<img src={url} alt={name} onError={()=>setErr(true)} style={{width:size,height:size,borderRadius:QB_DEFAULT.radiusMD,objectFit:"contain",border:`1px solid ${QB_DEFAULT.borderLight}`,background:"#fff"}}/>;
+  return<div style={{width:size,height:size,borderRadius:QB_DEFAULT.radiusMD,background:QB_DEFAULT.blueLight,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.44,fontWeight:700,color:QB_DEFAULT.blue}}>{name?.[0]}</div>;
 }
 
 export default function Portal(){
