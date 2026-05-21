@@ -20,22 +20,34 @@ PORTAL_URL = os.getenv("PORTAL_URL", "https://savills-ca-portal.vercel.app")
 def get_db():
     return psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
 
+def safe_exec(c, conn, sql, params=None):
+    """Execute SQL with savepoint so a failure doesn't abort the whole transaction."""
+    try:
+        c.execute("SAVEPOINT sp")
+        if params:
+            c.execute(sql, params)
+        else:
+            c.execute(sql)
+        c.execute("RELEASE SAVEPOINT sp")
+    except Exception as e:
+        c.execute("ROLLBACK TO SAVEPOINT sp")
+        print(f"[init_db] skipped: {str(e)[:120]}")
+
 def init_db():
     conn = get_db(); c = conn.cursor()
 
+    # ── Core tables ────────────────────────────────────────────────────────────
     c.execute("""CREATE TABLE IF NOT EXISTS ca_users (
         id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, full_name TEXT NOT NULL,
         email TEXT DEFAULT '', title TEXT DEFAULT '', hashed_password TEXT NOT NULL,
         role TEXT DEFAULT 'viewer', is_active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT NOW()
     )""")
-    # role: 'admin' | 'editor' | 'viewer'
 
     c.execute("""CREATE TABLE IF NOT EXISTS properties (
         id SERIAL PRIMARY KEY, name TEXT UNIQUE NOT NULL, location TEXT DEFAULT '',
         system TEXT DEFAULT '', logo_url TEXT DEFAULT '', is_active BOOLEAN DEFAULT TRUE
     )""")
-    c.execute("ALTER TABLE properties ADD COLUMN IF NOT EXISTS logo_url TEXT DEFAULT ''")
 
     c.execute("""CREATE TABLE IF NOT EXISTS user_property_access (
         id SERIAL PRIMARY KEY,
@@ -55,16 +67,8 @@ def init_db():
         created_by INTEGER NOT NULL REFERENCES ca_users(id),
         updated_by INTEGER REFERENCES ca_users(id),
         created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW(),
-        UNIQUE(property_id, month)
+        updated_at TIMESTAMP DEFAULT NOW()
     )""")
-    # Add missing columns if upgrading
-    c.execute("ALTER TABLE collection_logs ADD COLUMN IF NOT EXISTS total_revenue_share NUMERIC DEFAULT 0")
-    c.execute("ALTER TABLE collection_logs ADD COLUMN IF NOT EXISTS updated_by INTEGER REFERENCES ca_users(id)")
-    c.execute("ALTER TABLE collection_logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()")
-    try:
-        c.execute("ALTER TABLE collection_logs ADD CONSTRAINT collection_logs_property_month UNIQUE (property_id, month)")
-    except: pass
 
     c.execute("""CREATE TABLE IF NOT EXISTS email_logs (
         id SERIAL PRIMARY KEY, subject TEXT NOT NULL, recipients TEXT NOT NULL,
@@ -78,9 +82,7 @@ def init_db():
         pbi_report_id TEXT DEFAULT '', pbi_workspace_id TEXT DEFAULT '',
         embed_url TEXT DEFAULT '', is_active BOOLEAN DEFAULT TRUE
     )""")
-    c.execute("ALTER TABLE pbi_reports ADD COLUMN IF NOT EXISTS embed_url TEXT DEFAULT ''")
 
-    # Activity log table
     c.execute("""CREATE TABLE IF NOT EXISTS activity_logs (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES ca_users(id),
@@ -91,10 +93,20 @@ def init_db():
         created_at TIMESTAMP DEFAULT NOW()
     )""")
 
-    # Seed data
-    try:
-        c.execute("DELETE FROM properties WHERE id NOT IN (SELECT MIN(id) FROM properties GROUP BY name)")
-    except: pass
+    conn.commit()
+
+    # ── Safe migrations (use savepoints — won't abort on duplicate) ────────────
+    safe_exec(c, conn, "ALTER TABLE properties ADD COLUMN IF NOT EXISTS logo_url TEXT DEFAULT ''")
+    safe_exec(c, conn, "ALTER TABLE pbi_reports ADD COLUMN IF NOT EXISTS embed_url TEXT DEFAULT ''")
+    safe_exec(c, conn, "ALTER TABLE collection_logs ADD COLUMN IF NOT EXISTS total_revenue_share NUMERIC DEFAULT 0")
+    safe_exec(c, conn, "ALTER TABLE collection_logs ADD COLUMN IF NOT EXISTS updated_by INTEGER REFERENCES ca_users(id)")
+    safe_exec(c, conn, "ALTER TABLE collection_logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()")
+    safe_exec(c, conn, "ALTER TABLE collection_logs ADD CONSTRAINT collection_logs_property_month UNIQUE (property_id, month)")
+    safe_exec(c, conn, "DELETE FROM properties WHERE id NOT IN (SELECT MIN(id) FROM properties GROUP BY name)")
+
+    conn.commit()
+
+    # ── Seed default data ──────────────────────────────────────────────────────
     try:
         hashed = bcrypt.hashpw("123456".encode(), bcrypt.gensalt()).decode()
         c.execute("""INSERT INTO ca_users (username,full_name,email,title,hashed_password,role)
@@ -103,10 +115,14 @@ def init_db():
                      ON CONFLICT (username) DO NOTHING""", (hashed,))
         for name, loc, sys in [("Arkan","Sheikh Zayed","Oracle"),("Royal Park","New Cairo","Yardi"),
                                 ("Majarrah","New Cairo","Yardi"),("205","Downtown","Oracle")]:
-            c.execute("INSERT INTO properties (name,location,system) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING", (name,loc,sys))
-    except: pass
+            c.execute("INSERT INTO properties (name,location,system) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
+                     (name, loc, sys))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"[init_db] seed skipped: {e}")
 
-    conn.commit(); conn.close()
+    conn.close()
     print("✅ CA Portal DB v3 initialized")
 
 @app.on_event("startup")
