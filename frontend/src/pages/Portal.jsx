@@ -359,23 +359,39 @@ export default function Portal(){
               <span style={{fontSize:12,color:QB.textMuted}}>{selectedProp.location} · {selectedProp.system}</span>
             </div>
           </div>
-          {propReports.length>0&&<div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}}>
-            {propReports.map(r=>(
-              <button key={r.id} onClick={()=>setSelectedReport(r)} style={{padding:"7px 16px",fontSize:13,border:`1.5px solid ${selectedReport?.id===r.id?QB.blue:QB.borderInput}`,borderRadius:QB.radiusLG,background:selectedReport?.id===r.id?QB.blue:QB.bgCard,color:selectedReport?.id===r.id?"#fff":QB.textSecondary,cursor:"pointer",fontWeight:selectedReport?.id===r.id?600:400,fontFamily:QB.fontFamily}}>
-                {r.report_name}
-              </button>
-            ))}
-          </div>}
-          {selectedReport
-            ?<div style={s.card}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-                <div style={{fontSize:14,fontWeight:600,color:QB.textPrimary}}>{selectedReport.report_name}</div>
-                {isAdmin&&<button style={{...s.btnS,padding:"4px 12px",fontSize:12}} onClick={()=>{setEditReport(selectedReport);setEditReportForm({report_name:selectedReport.report_name,report_type:selectedReport.report_type,embed_url:selectedReport.embed_url||""});}}>Edit URL</button>}
-              </div>
-              {selectedReport.embed_url?<iframe src={selectedReport.embed_url} style={{width:"100%",height:600,border:"none",borderRadius:QB.radiusMD}} allowFullScreen title={selectedReport.report_name}/>:<Empty text='No embed URL set.'/>}
+          {/* Reports: sidebar + content */}
+          <div style={{display:"flex",gap:16,alignItems:"flex-start"}}>
+            {/* Sidebar */}
+            {propReports.length>0&&<div style={{width:200,flexShrink:0}}>
+              {/* Group by report_type */}
+              {[...new Set(propReports.map(r=>r.report_type))].map(cat=>(
+                <div key={cat} style={{marginBottom:16}}>
+                  <div style={{fontSize:10,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".08em",padding:"0 12px",marginBottom:6}}>{cat}</div>
+                  {propReports.filter(r=>r.report_type===cat).map(r=>(
+                    <button key={r.id} onClick={()=>setSelectedReport(r)} style={{display:"block",width:"100%",textAlign:"left",padding:"8px 12px",fontSize:13,border:"none",borderRadius:QB.radiusMD,background:selectedReport?.id===r.id?QB.blueLight:"transparent",color:selectedReport?.id===r.id?QB.blue:QB.textSecondary,cursor:"pointer",fontWeight:selectedReport?.id===r.id?600:400,fontFamily:QB.fontFamily,marginBottom:2}}>
+                      {r.report_name}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>}
+            {/* Content */}
+            <div style={{flex:1}}>
+              {selectedReport
+                ?<div style={s.card}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                    <div>
+                      <div style={{fontSize:14,fontWeight:600,color:QB.textPrimary}}>{selectedReport.report_name}</div>
+                      <div style={{fontSize:12,color:QB.textMuted,marginTop:2}}>{selectedReport.report_type}</div>
+                    </div>
+                    {isAdmin&&<button style={{...s.btnS,padding:"4px 12px",fontSize:12}} onClick={()=>{setEditReport(selectedReport);setEditReportForm({report_name:selectedReport.report_name,report_type:selectedReport.report_type,embed_url:selectedReport.embed_url||""});}}>Edit URL</button>}
+                  </div>
+                  {selectedReport.embed_url?<iframe src={selectedReport.embed_url} style={{width:"100%",height:600,border:"none",borderRadius:QB.radiusMD}} allowFullScreen title={selectedReport.report_name}/>:<Empty text='No embed URL set.'/>}
+                </div>
+                :<div style={s.card}><Empty text={propReports.length===0?"No reports for this property yet.":"Select a report from the sidebar."}/></div>
+              }
             </div>
-            :<div style={s.card}><Empty text={propReports.length===0?"No reports for this property yet.":"Select a report above."}/></div>
-          }
+          </div>
         </>}
 
         {/* ══════════════════════════════════════════════════════════════════
@@ -413,13 +429,13 @@ export default function Portal(){
                         <td style={s.td}><RateBadge rate={rate}/></td>
                         <td style={{...s.td,color:QB.textMuted,fontSize:12}}>{log.updated_by_name||log.created_by_name}</td>
                         <td style={s.td}>
-                          <div style={{display:"flex",gap:8"}}>
-                            <button style={{...s.btnLink,fontSize:12}} onClick={()=>{
+                          <div style={{display:"flex",gap:8}}>
+                            <button style={{...s.btnS,padding:"3px 10px",fontSize:12}} onClick={()=>{
                               setEditingLog(log);
                               setCollForm({property_id:log.property_id,month:log.month,total_invoices:log.total_invoices,total_revenue_share:log.total_revenue_share,total_collection:log.total_collection,notes:log.notes||""});
                               setCollView("add");
                             }}>Edit</button>
-                            {isAdmin&&<button style={{...s.btnLink,fontSize:12,color:QB.red}} onClick={async()=>{
+                            {isAdmin&&<button style={{...s.btnS,padding:"3px 10px",fontSize:12,color:QB.red,borderColor:QB.redBorder}} onClick={async()=>{
                               if(!confirm("Delete this record?"))return;
                               await apiFetch(`/collection-logs/${log.id}`,{method:"DELETE"});
                               load();flash("Record deleted");
@@ -466,7 +482,7 @@ export default function Portal(){
                 Collection rate: <strong style={{color:QB.textPrimary}}>{Math.round((parseFloat(collForm.total_collection)||0)/(parseFloat(collForm.total_invoices)||1)*100)}%</strong>
               </div>
             )}
-            <div style={{display:"flex",gap:8"}}>
+            <div style={{display:"flex",gap:8}}>
               <button style={s.btnP} onClick={async()=>{
                 if(!collForm.property_id||!collForm.month){flash("Property and month required","error");return;}
                 try{
@@ -650,7 +666,7 @@ export default function Portal(){
                       {u.title&&<div style={{fontSize:12,color:QB.textSecondary}}>{u.title}</div>}
                     </div>
                   </div>
-                  <div style={{display:"flex",gap:8"}}>
+                  <div style={{display:"flex",gap:8}}>
                     <button style={{...s.btnS,padding:"4px 12px",fontSize:12}} onClick={()=>{
                       setEditUser(u);
                       setEditUserForm({full_name:u.full_name,email:u.email||"",title:u.title||"",role:u.role});
