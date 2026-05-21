@@ -183,12 +183,21 @@ export default function Portal(){
   const reportTypes=["Collection","Aging","Budget vs Actual","Invoice Reconciliation","Income Statement","Other"];
 
   const tabs=isAdmin
-    ?["properties","collection","email","reports","users","activity","settings"]
+    ?["properties","reports","collection","email","manage-reports","users","activity","settings"]
     :isEditor
-    ?["properties","collection","email","activity"]
-    :["properties","activity"];
+    ?["properties","reports","collection","email","activity"]
+    :["properties","reports","activity"];
 
-  const tabLabels={properties:"Properties",collection:"Collection",email:"Email",reports:"Manage Reports",users:"Users",activity:"Activity",settings:"⚙ Settings"};
+  const tabLabels={
+    properties:"Properties",
+    reports:"Reports",
+    collection:"Collection",
+    email:"Email",
+    "manage-reports":"Manage Reports",
+    users:"Users",
+    activity:"Activity",
+    settings:"⚙ Settings"
+  };
 
   // ── Styles ──────────────────────────────────────────────────────────────────
   const s={
@@ -426,6 +435,152 @@ export default function Portal(){
         </>}
 
         {/* ══════════════════════════════════════════════════════════════════
+            REPORTS TAB — All properties with their reports
+        ══════════════════════════════════════════════════════════════════ */}
+        {tab==="reports"&&(
+          <div style={{display:"flex",gap:24,alignItems:"flex-start"}}>
+
+            {/* ── Left column: Properties list ── */}
+            <div style={{width:260,flexShrink:0}}>
+              <div style={{fontSize:11,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:12}}>Properties</div>
+              {visibleProps.map(p=>{
+                const propReportCount=reports.filter(r=>r.property_id===p.id).length;
+                const isSelected=selectedProp?.id===p.id;
+                return(
+                  <div key={p.id}
+                    onClick={()=>{setSelectedProp(p);setSelectedReport(null);}}
+                    style={{
+                      display:"flex",alignItems:"center",gap:10,
+                      padding:"10px 12px",borderRadius:QB.radiusLG,
+                      marginBottom:4,cursor:"pointer",
+                      background:isSelected?QB.blueLight:"transparent",
+                      border:`1px solid ${isSelected?QB.blue:QB.borderLight}`,
+                      transition:"all 0.15s",
+                    }}>
+                    <PropLogo url={p.logo_url} name={p.name} size={28}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:isSelected?600:500,color:isSelected?QB.blue:QB.textPrimary,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</div>
+                      <div style={{fontSize:11,color:QB.textMuted}}>{p.location}</div>
+                    </div>
+                    <div style={{
+                      minWidth:20,height:20,borderRadius:10,
+                      background:isSelected?QB.blue:QB.bgSidebar,
+                      color:isSelected?"#fff":QB.textSecondary,
+                      fontSize:11,fontWeight:600,
+                      display:"flex",alignItems:"center",justifyContent:"center",
+                      border:`1px solid ${isSelected?QB.blue:QB.borderCard}`,
+                      padding:"0 6px",
+                    }}>{propReportCount}</div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ── Right column: Reports for selected property ── */}
+            <div style={{flex:1}}>
+              {!selectedProp?(
+                <div style={{...s.card,textAlign:"center",padding:"60px 20px"}}>
+                  <div style={{fontSize:32,marginBottom:12}}>📋</div>
+                  <div style={{fontSize:14,fontWeight:600,color:QB.textPrimary,marginBottom:6}}>Select a property</div>
+                  <div style={{fontSize:13,color:QB.textMuted}}>Choose a property from the left to view its reports</div>
+                </div>
+              ):(
+                <div>
+                  {/* Property header */}
+                  <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20,padding:"16px 20px",background:QB.bgCard,borderRadius:QB.radiusLG,border:`1px solid ${QB.borderCard}`,boxShadow:QB.shadowCard}}>
+                    <PropLogo url={selectedProp.logo_url} name={selectedProp.name} size={40}/>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:17,fontWeight:700,color:QB.textPrimary}}>{selectedProp.name}</div>
+                      <div style={{fontSize:12,color:QB.textMuted}}>{selectedProp.location} · {selectedProp.system}</div>
+                    </div>
+                    <Badge label={selectedProp.system||"—"} color={selectedProp.system==="Oracle"?"purple":"green"}/>
+                  </div>
+
+                  {/* Reports grouped by type */}
+                  {propReports.length===0?(
+                    <div style={{...s.card,textAlign:"center",padding:"40px 20px"}}>
+                      <div style={{fontSize:24,marginBottom:8}}>📭</div>
+                      <div style={{fontSize:13,color:QB.textMuted}}>No reports added for this property yet</div>
+                      {isAdmin&&<button style={{...s.btnP,marginTop:16,fontSize:12,padding:"7px 16px"}} onClick={()=>{setTab("manage-reports");}}>+ Add report</button>}
+                    </div>
+                  ):(
+                    <div>
+                      {[...new Set(propReports.map(r=>r.category||r.report_type))].map(cat=>{
+                        const catReports=propReports.filter(r=>(r.category||r.report_type)===cat);
+                        return(
+                          <div key={cat} style={{marginBottom:20}}>
+                            {/* Category header */}
+                            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                              <div style={{fontSize:11,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".08em"}}>{cat}</div>
+                              <div style={{flex:1,height:1,background:QB.borderLight}}/>
+                              <div style={{fontSize:11,color:QB.textMuted}}>{catReports.length} report{catReports.length!==1?"s":""}</div>
+                            </div>
+
+                            {/* Report cards */}
+                            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:10}}>
+                              {catReports.map(r=>{
+                                const isActive=selectedReport?.id===r.id;
+                                return(
+                                  <div key={r.id}
+                                    onClick={()=>setSelectedReport(isActive?null:r)}
+                                    style={{
+                                      padding:"14px 16px",
+                                      background:isActive?QB.blueLight:QB.bgCard,
+                                      border:`1.5px solid ${isActive?QB.blue:QB.borderCard}`,
+                                      borderRadius:QB.radiusLG,
+                                      cursor:"pointer",
+                                      boxShadow:isActive?"none":QB.shadowCard,
+                                      transition:"all 0.15s",
+                                    }}>
+                                    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+                                      <div style={{flex:1}}>
+                                        <div style={{fontSize:13,fontWeight:600,color:isActive?QB.blue:QB.textPrimary,marginBottom:4}}>{r.report_name}</div>
+                                        <Badge label={r.report_type} color="gray"/>
+                                      </div>
+                                      <div style={{fontSize:18,opacity:0.5}}>{isActive?"▼":"▶"}</div>
+                                    </div>
+                                    {!isActive&&(
+                                      <div style={{marginTop:8,fontSize:11,color:QB.textMuted,display:"flex",alignItems:"center",gap:4}}>
+                                        <span>Click to open report</span>
+                                        <span>→</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Expanded report iframe */}
+                      {selectedReport&&selectedReport.property_id===selectedProp.id&&(
+                        <div style={{...s.card,marginTop:8}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                            <div>
+                              <div style={{fontSize:14,fontWeight:600,color:QB.textPrimary}}>{selectedReport.report_name}</div>
+                              <div style={{fontSize:12,color:QB.textMuted,marginTop:2}}>{selectedReport.report_type}{selectedReport.category?` · ${selectedReport.category}`:""}</div>
+                            </div>
+                            <div style={{display:"flex",gap:8}}>
+                              {isAdmin&&<button style={{...s.btnS,padding:"4px 12px",fontSize:12}} onClick={()=>{setEditReport(selectedReport);setEditReportForm({report_name:selectedReport.report_name,report_type:selectedReport.report_type,category:selectedReport.category||"",embed_url:selectedReport.embed_url||""});}}>Edit</button>}
+                              <button style={{...s.btnS,padding:"4px 12px",fontSize:12}} onClick={()=>setSelectedReport(null)}>✕ Close</button>
+                            </div>
+                          </div>
+                          {selectedReport.embed_url
+                            ?<iframe src={selectedReport.embed_url} style={{width:"100%",height:600,border:"none",borderRadius:QB.radiusMD}} allowFullScreen title={selectedReport.report_name}/>
+                            :<div style={{textAlign:"center",padding:"40px",color:QB.textMuted,fontSize:13}}>No embed URL set for this report.</div>
+                          }
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════════════
             COLLECTION TAB — Log CRUD
         ══════════════════════════════════════════════════════════════════ */}
         {tab==="collection"&&isEditor&&<>
@@ -634,7 +789,7 @@ export default function Portal(){
         {/* ══════════════════════════════════════════════════════════════════
             MANAGE REPORTS TAB (admin only)
         ══════════════════════════════════════════════════════════════════ */}
-        {tab==="reports"&&isAdmin&&<>
+        {tab==="manage-reports"&&isAdmin&&<>
           <div style={s.card}>
             <div style={s.cardTitle}>All reports</div>
             {reports.length===0?<Empty text="No reports yet"/>:(
