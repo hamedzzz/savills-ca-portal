@@ -79,6 +79,7 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS pbi_reports (
         id SERIAL PRIMARY KEY, property_id INTEGER REFERENCES properties(id),
         report_name TEXT NOT NULL, report_type TEXT NOT NULL,
+        category TEXT DEFAULT '',
         pbi_report_id TEXT DEFAULT '', pbi_workspace_id TEXT DEFAULT '',
         embed_url TEXT DEFAULT '', is_active BOOLEAN DEFAULT TRUE
     )""")
@@ -93,17 +94,42 @@ def init_db():
         created_at TIMESTAMP DEFAULT NOW()
     )""")
 
+    c.execute("""CREATE TABLE IF NOT EXISTS app_settings (
+        id SERIAL PRIMARY KEY,
+        key TEXT UNIQUE NOT NULL,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT NOW()
+    )""")
+
     conn.commit()
 
     # ── Safe migrations (use savepoints — won't abort on duplicate) ────────────
     safe_exec(c, conn, "ALTER TABLE properties ADD COLUMN IF NOT EXISTS logo_url TEXT DEFAULT ''")
     safe_exec(c, conn, "ALTER TABLE pbi_reports ADD COLUMN IF NOT EXISTS embed_url TEXT DEFAULT ''")
+    safe_exec(c, conn, "ALTER TABLE pbi_reports ADD COLUMN IF NOT EXISTS category TEXT DEFAULT ''")
     safe_exec(c, conn, "ALTER TABLE collection_logs ADD COLUMN IF NOT EXISTS total_revenue_share NUMERIC DEFAULT 0")
     safe_exec(c, conn, "ALTER TABLE collection_logs ADD COLUMN IF NOT EXISTS updated_by INTEGER REFERENCES ca_users(id)")
     safe_exec(c, conn, "ALTER TABLE collection_logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()")
     safe_exec(c, conn, "ALTER TABLE collection_logs ADD CONSTRAINT collection_logs_property_month UNIQUE (property_id, month)")
     safe_exec(c, conn, "DELETE FROM properties WHERE id NOT IN (SELECT MIN(id) FROM properties GROUP BY name)")
 
+    conn.commit()
+
+    # ── Seed default settings ─────────────────────────────────────────────────
+    default_settings = [
+        ("app_name", "Savills Egypt CA"),
+        ("logo_url", "https://savills-ca-portal.vercel.app/savills-logo.svg"),
+        ("primary_color", "#0077C5"),
+        ("accent_color", "#FEDE07"),
+        ("font_family", "Inter"),
+        ("email_sender_name", "Savills Egypt — Client Accounting"),
+        ("email_sender_email", "ahmed.hamed@savills.me"),
+        ("portal_tagline", "Client Accounting · Property Management"),
+    ]
+    for key, value in default_settings:
+        safe_exec(c, conn, 
+            "INSERT INTO app_settings (key, value) VALUES (%s, %s) ON CONFLICT (key) DO NOTHING",
+            (key, value))
     conn.commit()
 
     # ── Seed default data ──────────────────────────────────────────────────────
@@ -211,11 +237,12 @@ class CollectionEmailSend(BaseModel):
 
 class ReportCreate(BaseModel):
     property_id: int; report_name: str; report_type: str
-    embed_url: str = ""; pbi_report_id: str = ""; pbi_workspace_id: str = ""
+    category: str = ""; embed_url: str = ""; pbi_report_id: str = ""; pbi_workspace_id: str = ""
 
 class ReportUpdate(BaseModel):
     report_name: Optional[str] = None; report_type: Optional[str] = None
-    embed_url: Optional[str] = None; pbi_report_id: Optional[str] = None
+    category: Optional[str] = None; embed_url: Optional[str] = None
+    pbi_report_id: Optional[str] = None
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 @app.post("/auth/login")
@@ -396,9 +423,9 @@ def list_reports(current_user=Depends(get_current_user)):
 @app.post("/reports", status_code=201)
 def create_report(data: ReportCreate, admin=Depends(require_admin)):
     conn = get_db(); c = conn.cursor()
-    c.execute("""INSERT INTO pbi_reports (property_id,report_name,report_type,pbi_report_id,pbi_workspace_id,embed_url)
-                 VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
-             (data.property_id, data.report_name, data.report_type,
+    c.execute("""INSERT INTO pbi_reports (property_id,report_name,report_type,category,pbi_report_id,pbi_workspace_id,embed_url)
+                 VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+             (data.property_id, data.report_name, data.report_type, data.category,
               data.pbi_report_id, data.pbi_workspace_id, data.embed_url))
     new_id = c.fetchone()["id"]
     log_activity(conn, admin["id"], "added report", "report", data.report_name)
@@ -646,6 +673,35 @@ def send_collection_email_endpoint(data: CollectionEmailSend, current_user=Depen
                  ", ".join(props.values()), f"month={data.month} recipients={len(sent_to)}")
     conn.commit(); conn.close()
     return {"ok": True, "sent_to": sent_to}
+
+# ── App Settings ─────────────────────────────────────────────────────────────
+@app.get("/settings")
+def get_settings(current_user=Depends(get_current_user)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT key, value FROM app_settings ORDER BY id")
+    rows = {r["key"]: r["value"] for r in c.fetchall()}
+    conn.close()
+    return rows
+
+@app.patch("/settings")
+def update_settings(data: dict, admin=Depends(require_admin)):
+    allowed_keys = {
+        "app_name", "logo_url", "primary_color", "accent_color",
+        "font_family", "email_sender_name", "email_sender_email", "portal_tagline"
+    }
+    conn = get_db(); c = conn.cursor()
+    updated = []
+    for key, value in data.items():
+        if key in allowed_keys and isinstance(value, str):
+            c.execute("""INSERT INTO app_settings (key, value, updated_at)
+                         VALUES (%s, %s, NOW())
+                         ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()""",
+                     (key, value))
+            updated.append(key)
+    log_activity(conn, admin["id"], "updated app settings", "settings",
+                 ", ".join(updated))
+    conn.commit(); conn.close()
+    return {"ok": True, "updated": updated}
 
 # ── Power BI ──────────────────────────────────────────────────────────────────
 @app.get("/pbi/embed-token/{report_id}")
