@@ -1,20 +1,29 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 
-const QB = {
-  bgPage:"#F4F5F7", bgCard:"#FFFFFF", bgSidebar:"#F8F9FA",
-  borderCard:"#E3E8EF", borderInput:"#C4CBD6", borderLight:"#EEF0F3",
-  blue:"#0077C5", blueLight:"#E8F4FD",
-  red:"#C80C0F", redBg:"#FEF2F2", redBorder:"#FECACA",
-  yellow:"#FEDE07",
-  textPrimary:"#1C1C1C", textSecondary:"#57647A", textMuted:"#8C96A3",
-  green:"#2CA01C", greenBg:"#F2FBF0", greenBorder:"#B7E5B0",
-  amber:"#B45309", amberBg:"#FFFBEB", amberBorder:"#FDE68A",
-  fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
-  radiusMD:6, radiusLG:8,
-  shadowCard:"0 1px 3px rgba(0,0,0,0.08)",
-  shadowModal:"0 10px 40px rgba(0,0,0,0.15)",
-};
+function makeQB(settings = {}) {
+  const blue   = settings.primary_color || "#0077C5";
+  const yellow = settings.accent_color  || "#FEDE07";
+  const font   = settings.font_family   || "Inter";
+  // Derive light version of primary color (simple opacity trick via hex)
+  return {
+    bgPage:"#F4F5F7", bgCard:"#FFFFFF", bgSidebar:"#F8F9FA",
+    borderCard:"#E3E8EF", borderInput:"#C4CBD6", borderLight:"#EEF0F3",
+    blue, blueLight:`${blue}18`,
+    red:"#C80C0F", redBg:"#FEF2F2", redBorder:"#FECACA",
+    yellow,
+    textPrimary:"#1C1C1C", textSecondary:"#57647A", textMuted:"#8C96A3",
+    green:"#2CA01C", greenBg:"#F2FBF0", greenBorder:"#B7E5B0",
+    amber:"#B45309", amberBg:"#FFFBEB", amberBorder:"#FDE68A",
+    fontFamily:`'${font}',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif`,
+    radiusMD:6, radiusLG:8,
+    shadowCard:"0 1px 3px rgba(0,0,0,0.08)",
+    shadowModal:"0 10px 40px rgba(0,0,0,0.15)",
+  };
+}
+
+// Static QB for components defined outside Portal (Avatar, Badge, etc.)
+const QB_DEFAULT = makeQB();
 
 function fmtShort(n) {
   const v = parseFloat(n)||0;
@@ -27,7 +36,7 @@ function Avatar({name,size=32}){
   const initials=name.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase();
   const palettes=[["#DBEAFE","#1D4ED8"],["#D1FAE5","#065F46"],["#EDE9FE","#5B21B6"],["#FEF3C7","#92400E"]];
   const[bg,color]=palettes[name.charCodeAt(0)%palettes.length];
-  return<div style={{width:size,height:size,borderRadius:"50%",background:bg,color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.36,fontWeight:600,flexShrink:0,fontFamily:QB.fontFamily}}>{initials}</div>;
+  return<div style={{width:size,height:size,borderRadius:"50%",background:bg,color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.36,fontWeight:600,flexShrink:0,fontFamily:QB_DEFAULT.fontFamily}}>{initials}</div>;
 }
 
 function Badge({label,color="blue"}){
@@ -51,8 +60,8 @@ function PropLogo({url,name,size=36}){
 }
 
 export default function Portal(){
-  const{user,logout,apiFetch,isAdmin}=useAuth();
-  const isEditor=user?.role==="admin"||user?.role==="editor";
+  const{user,logout,apiFetch,isAdmin,isEditor,settings,updateSettings}=useAuth();
+  const QB = makeQB(settings);
 
   const[tab,setTab]=useState("properties");
   const[properties,setProperties]=useState([]);
@@ -100,11 +109,16 @@ export default function Portal(){
   const[editPropForm,setEditPropForm]=useState({name:"",location:"",system:"",logo_url:""});
 
   // Reports mgmt
-  const[newReport,setNewReport]=useState({property_id:"",report_name:"",report_type:"Collection",embed_url:""});
+  const[newReport,setNewReport]=useState({property_id:"",report_name:"",report_type:"Collection",category:"",embed_url:""});
   const[editReport,setEditReport]=useState(null);
-  const[editReportForm,setEditReportForm]=useState({report_name:"",report_type:"",embed_url:""});
+  const[editReportForm,setEditReportForm]=useState({report_name:"",report_type:"",category:"",embed_url:""});
 
   // Profile modal
+  // Settings control panel state
+  const[settingsForm,setSettingsForm]=useState({});
+  const[settingsSaving,setSettingsSaving]=useState(false);
+  const[settingsPreview,setSettingsPreview]=useState(false);
+
   const[showProfile,setShowProfile]=useState(false);
   const[profileForm,setProfileForm]=useState({full_name:"",email:"",title:""});
   const[pwForm,setPwForm]=useState({current_password:"",new_password:"",confirm:""});
@@ -139,6 +153,20 @@ export default function Portal(){
     }
   };
 
+  // Init settings form when settings load
+  useEffect(()=>{
+    setSettingsForm({
+      app_name: settings.app_name||"",
+      logo_url: settings.logo_url||"",
+      primary_color: settings.primary_color||"#0077C5",
+      accent_color: settings.accent_color||"#FEDE07",
+      font_family: settings.font_family||"Inter",
+      email_sender_name: settings.email_sender_name||"",
+      email_sender_email: settings.email_sender_email||"",
+      portal_tagline: settings.portal_tagline||"",
+    });
+  },[settings]);
+
   const loadActivities=async()=>{
     let url=`/activity-logs?days=${actFilterDays}`;
     if(actFilterUser)url+=`&user_id=${actFilterUser}`;
@@ -155,12 +183,12 @@ export default function Portal(){
   const reportTypes=["Collection","Aging","Budget vs Actual","Invoice Reconciliation","Income Statement","Other"];
 
   const tabs=isAdmin
-    ?["properties","collection","email","reports","users","activity"]
+    ?["properties","collection","email","reports","users","activity","settings"]
     :isEditor
     ?["properties","collection","email","activity"]
     :["properties","activity"];
 
-  const tabLabels={properties:"Properties",collection:"Collection",email:"Email",reports:"Manage Reports",users:"Users",activity:"Activity"};
+  const tabLabels={properties:"Properties",collection:"Collection",email:"Email",reports:"Manage Reports",users:"Users",activity:"Activity",settings:"⚙ Settings"};
 
   // ── Styles ──────────────────────────────────────────────────────────────────
   const s={
@@ -187,12 +215,15 @@ export default function Portal(){
 
   const SavillsLogo=()=>(
     <div style={{display:"flex",alignItems:"center",gap:10}}>
-      <div style={{width:38,height:38,borderRadius:QB.radiusMD,overflow:"hidden",border:`1px solid ${QB.borderLight}`,flexShrink:0}}>
-        <img src="https://savills-ca-portal.vercel.app/savills-logo.svg" alt="Savills"
-          style={{width:38,height:38,display:"block"}}
-          onError={e=>{e.target.style.display="none";e.target.parentElement.style.background=QB.yellow;e.target.parentElement.innerHTML='<span style="display:flex;align-items:center;justify-content:center;width:38px;height:38px;font-size:18px;font-weight:900;color:#111;font-family:Georgia,serif">S</span>';}}/>
+      <div style={{width:38,height:38,borderRadius:QB.radiusMD,overflow:"hidden",border:`1px solid ${QB.borderLight}`,flexShrink:0,background:QB.yellow}}>
+        <img src={settings.logo_url||"https://savills-ca-portal.vercel.app/savills-logo.svg"} alt={settings.app_name||"Portal"}
+          style={{width:38,height:38,display:"block",objectFit:"contain"}}
+          onError={e=>{e.target.style.display="none";}}/>
       </div>
-      <div style={{fontSize:10,color:QB.textMuted,letterSpacing:0.6,textTransform:"uppercase"}}>Client Accounting Portal</div>
+      <div>
+        <div style={{fontSize:13,fontWeight:700,color:QB.textPrimary,lineHeight:1.2}}>{settings.app_name||"CA Portal"}</div>
+        <div style={{fontSize:10,color:QB.textMuted,letterSpacing:0.4}}>{settings.portal_tagline||"Client Accounting"}</div>
+      </div>
     </div>
   );
 
@@ -364,10 +395,10 @@ export default function Portal(){
             {/* Sidebar */}
             {propReports.length>0&&<div style={{width:200,flexShrink:0}}>
               {/* Group by report_type */}
-              {[...new Set(propReports.map(r=>r.report_type))].map(cat=>(
+              {[...new Set(propReports.map(r=>r.category||r.report_type))].map(cat=>(
                 <div key={cat} style={{marginBottom:16}}>
                   <div style={{fontSize:10,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".08em",padding:"0 12px",marginBottom:6}}>{cat}</div>
-                  {propReports.filter(r=>r.report_type===cat).map(r=>(
+                  {propReports.filter(r=>(r.category||r.report_type)===cat).map(r=>(
                     <button key={r.id} onClick={()=>setSelectedReport(r)} style={{display:"block",width:"100%",textAlign:"left",padding:"8px 12px",fontSize:13,border:"none",borderRadius:QB.radiusMD,background:selectedReport?.id===r.id?QB.blueLight:"transparent",color:selectedReport?.id===r.id?QB.blue:QB.textSecondary,cursor:"pointer",fontWeight:selectedReport?.id===r.id?600:400,fontFamily:QB.fontFamily,marginBottom:2}}>
                       {r.report_name}
                     </button>
@@ -384,7 +415,7 @@ export default function Portal(){
                       <div style={{fontSize:14,fontWeight:600,color:QB.textPrimary}}>{selectedReport.report_name}</div>
                       <div style={{fontSize:12,color:QB.textMuted,marginTop:2}}>{selectedReport.report_type}</div>
                     </div>
-                    {isAdmin&&<button style={{...s.btnS,padding:"4px 12px",fontSize:12}} onClick={()=>{setEditReport(selectedReport);setEditReportForm({report_name:selectedReport.report_name,report_type:selectedReport.report_type,embed_url:selectedReport.embed_url||""});}}>Edit URL</button>}
+                    {isAdmin&&<button style={{...s.btnS,padding:"4px 12px",fontSize:12}} onClick={()=>{setEditReport(selectedReport);setEditReportForm({report_name:selectedReport.report_name,report_type:selectedReport.report_type,category:selectedReport.category||"",embed_url:selectedReport.embed_url||""});}}>Edit URL</button>}
                   </div>
                   {selectedReport.embed_url?<iframe src={selectedReport.embed_url} style={{width:"100%",height:600,border:"none",borderRadius:QB.radiusMD}} allowFullScreen title={selectedReport.report_name}/>:<Empty text='No embed URL set.'/>}
                 </div>
@@ -608,13 +639,14 @@ export default function Portal(){
             <div style={s.cardTitle}>All reports</div>
             {reports.length===0?<Empty text="No reports yet"/>:(
               <table style={{width:"100%",borderCollapse:"collapse"}}>
-                <thead><tr>{["Name","Property","Type","",""].map((h,i)=><th key={i} style={s.th}>{h}</th>)}</tr></thead>
+                <thead><tr>{["Name","Property","Type","Category","",""].map((h,i)=><th key={i} style={s.th}>{h}</th>)}</tr></thead>
                 <tbody>{reports.map(r=>(
                   <tr key={r.id}>
                     <td style={{...s.td,fontWeight:600}}>{r.report_name}</td>
                     <td style={{...s.td,color:QB.textSecondary}}>{r.property_name}</td>
                     <td style={s.td}><Badge label={r.report_type} color="blue"/></td>
-                    <td style={s.td}><button style={{...s.btnS,padding:"3px 10px",fontSize:12}} onClick={()=>{setEditReport(r);setEditReportForm({report_name:r.report_name,report_type:r.report_type,embed_url:r.embed_url||""});}}>Edit</button></td>
+                    <td style={s.td}>{r.category?<Badge label={r.category} color="gray"/>:<span style={{color:QB.textMuted,fontSize:12}}>—</span>}</td>
+                    <td style={s.td}><button style={{...s.btnS,padding:"3px 10px",fontSize:12}} onClick={()=>{setEditReport(r);setEditReportForm({report_name:r.report_name,report_type:r.report_type,category:r.category||"",embed_url:r.embed_url||""});}}>Edit</button></td>
                     <td style={s.td}><button style={{background:"none",border:"none",cursor:"pointer",color:QB.red,fontSize:12,fontWeight:600}} onClick={async()=>{if(!confirm("Delete?"))return;await apiFetch(`/reports/${r.id}`,{method:"DELETE"});load();flash("Deleted");}}>✕</button></td>
                   </tr>
                 ))}</tbody>
@@ -635,11 +667,14 @@ export default function Portal(){
                   {reportTypes.map(t=><option key={t}>{t}</option>)}
                 </select>
               </div>
+              <div><label style={s.label}>Category <span style={{color:QB.textMuted,fontWeight:400}}>(optional — groups reports in sidebar)</span></label>
+                <input style={s.input} value={newReport.category} onChange={e=>setNewReport(p=>({...p,category:e.target.value}))} placeholder="e.g. Financial, Operations, Compliance"/>
+              </div>
               <div style={{gridColumn:"1/-1"}}><label style={s.label}>Embed URL</label><input style={s.input} value={newReport.embed_url} onChange={e=>setNewReport(p=>({...p,embed_url:e.target.value}))} placeholder="https://app.powerbi.com/..."/></div>
             </div>
             <button style={s.btnP} onClick={async()=>{
               if(!newReport.property_id||!newReport.report_name){flash("Fill required fields","error");return;}
-              try{await apiFetch("/reports",{method:"POST",body:JSON.stringify({...newReport,property_id:parseInt(newReport.property_id)})});setNewReport({property_id:"",report_name:"",report_type:"Collection",embed_url:""});load();flash("Report added");}
+              try{await apiFetch("/reports",{method:"POST",body:JSON.stringify({...newReport,property_id:parseInt(newReport.property_id)})});setNewReport({property_id:"",report_name:"",report_type:"Collection",category:"",embed_url:""});load();flash("Report added");}
               catch(e){flash(e.message,"error");}
             }}>Add report</button>
           </div>
@@ -784,6 +819,150 @@ export default function Portal(){
         </div>}
 
         {/* ══════════════════════════════════════════════════════════════════
+            SETTINGS TAB (admin only)
+        ══════════════════════════════════════════════════════════════════ */}
+        {tab==="settings"&&isAdmin&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,alignItems:"start"}}>
+
+          {/* ── Branding ── */}
+          <div style={s.card}>
+            <div style={s.cardTitle}>🎨 Branding</div>
+
+            <div style={{marginBottom:14}}>
+              <label style={s.label}>App name</label>
+              <input style={s.input} value={settingsForm.app_name||""} onChange={e=>setSettingsForm(f=>({...f,app_name:e.target.value}))} placeholder="Savills Egypt CA"/>
+            </div>
+
+            <div style={{marginBottom:14}}>
+              <label style={s.label}>Portal tagline</label>
+              <input style={s.input} value={settingsForm.portal_tagline||""} onChange={e=>setSettingsForm(f=>({...f,portal_tagline:e.target.value}))} placeholder="Client Accounting · Property Management"/>
+            </div>
+
+            <div style={{marginBottom:8}}>
+              <label style={s.label}>Logo URL</label>
+              <input style={s.input} value={settingsForm.logo_url||""} onChange={e=>setSettingsForm(f=>({...f,logo_url:e.target.value}))} placeholder="https://..."/>
+            </div>
+            {settingsForm.logo_url&&(
+              <div style={{marginBottom:14,padding:"10px 12px",background:QB.bgSidebar,borderRadius:QB.radiusMD,border:`1px solid ${QB.borderLight}`,display:"inline-flex",alignItems:"center",gap:10}}>
+                <img src={settingsForm.logo_url} alt="preview" style={{height:36,borderRadius:4,objectFit:"contain"}} onError={e=>e.target.style.display="none"}/>
+                <span style={{fontSize:12,color:QB.textMuted}}>Logo preview</span>
+              </div>
+            )}
+          </div>
+
+          {/* ── Colors ── */}
+          <div style={s.card}>
+            <div style={s.cardTitle}>🎨 Colors & Font</div>
+
+            <div style={{marginBottom:16}}>
+              <label style={s.label}>Primary color (buttons, tabs, links)</label>
+              <div style={{display:"flex",gap:10,alignItems:"center",marginTop:4}}>
+                <input type="color" value={settingsForm.primary_color||"#0077C5"}
+                  onChange={e=>setSettingsForm(f=>({...f,primary_color:e.target.value}))}
+                  style={{width:44,height:36,border:`1px solid ${QB.borderInput}`,borderRadius:QB.radiusMD,cursor:"pointer",padding:2}}/>
+                <input style={{...s.input,fontFamily:"monospace",width:100}} value={settingsForm.primary_color||""} onChange={e=>setSettingsForm(f=>({...f,primary_color:e.target.value}))} placeholder="#0077C5"/>
+                <div style={{width:36,height:36,borderRadius:QB.radiusMD,background:settingsForm.primary_color||"#0077C5",border:`1px solid ${QB.borderLight}`}}/>
+              </div>
+            </div>
+
+            <div style={{marginBottom:16}}>
+              <label style={s.label}>Accent color (top bar, highlights)</label>
+              <div style={{display:"flex",gap:10,alignItems:"center",marginTop:4}}>
+                <input type="color" value={settingsForm.accent_color||"#FEDE07"}
+                  onChange={e=>setSettingsForm(f=>({...f,accent_color:e.target.value}))}
+                  style={{width:44,height:36,border:`1px solid ${QB.borderInput}`,borderRadius:QB.radiusMD,cursor:"pointer",padding:2}}/>
+                <input style={{...s.input,fontFamily:"monospace",width:100}} value={settingsForm.accent_color||""} onChange={e=>setSettingsForm(f=>({...f,accent_color:e.target.value}))} placeholder="#FEDE07"/>
+                <div style={{width:36,height:36,borderRadius:QB.radiusMD,background:settingsForm.accent_color||"#FEDE07",border:`1px solid ${QB.borderLight}`}}/>
+              </div>
+            </div>
+
+            <div style={{marginBottom:4}}>
+              <label style={s.label}>Font family</label>
+              <select style={s.input} value={settingsForm.font_family||"Inter"} onChange={e=>setSettingsForm(f=>({...f,font_family:e.target.value}))}>
+                <option value="Inter">Inter (default)</option>
+                <option value="Roboto">Roboto</option>
+                <option value="Open Sans">Open Sans</option>
+                <option value="Lato">Lato</option>
+                <option value="Poppins">Poppins</option>
+                <option value="Montserrat">Montserrat</option>
+                <option value="DM Sans">DM Sans</option>
+                <option value="Plus Jakarta Sans">Plus Jakarta Sans</option>
+              </select>
+            </div>
+          </div>
+
+          {/* ── Email Settings ── */}
+          <div style={s.card}>
+            <div style={s.cardTitle}>📧 Email sender</div>
+
+            <div style={{marginBottom:14}}>
+              <label style={s.label}>Sender name</label>
+              <input style={s.input} value={settingsForm.email_sender_name||""} onChange={e=>setSettingsForm(f=>({...f,email_sender_name:e.target.value}))} placeholder="Savills Egypt — Client Accounting"/>
+            </div>
+
+            <div style={{marginBottom:4}}>
+              <label style={s.label}>Sender email</label>
+              <input style={s.input} value={settingsForm.email_sender_email||""} onChange={e=>setSettingsForm(f=>({...f,email_sender_email:e.target.value}))} placeholder="ahmed.hamed@savills.me"/>
+            </div>
+          </div>
+
+          {/* ── Preview & Save ── */}
+          <div style={s.card}>
+            <div style={s.cardTitle}>👁 Preview & Save</div>
+
+            {/* Live preview topbar */}
+            <div style={{marginBottom:16,border:`1px solid ${QB.borderCard}`,borderRadius:QB.radiusLG,overflow:"hidden"}}>
+              <div style={{background:settingsForm.accent_color||"#FEDE07",height:4}}/>
+              <div style={{background:"#fff",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,borderBottom:`1px solid ${QB.borderLight}`}}>
+                {settingsForm.logo_url
+                  ?<img src={settingsForm.logo_url} alt="logo" style={{width:30,height:30,borderRadius:4,objectFit:"contain"}} onError={e=>e.target.style.display="none"}/>
+                  :<div style={{width:30,height:30,borderRadius:4,background:settingsForm.accent_color||"#FEDE07",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900}}>S</div>
+                }
+                <div>
+                  <div style={{fontSize:13,fontWeight:700,color:"#1C1C1C",fontFamily:`'${settingsForm.font_family||"Inter"}',sans-serif`}}>{settingsForm.app_name||"CA Portal"}</div>
+                  <div style={{fontSize:10,color:"#8C96A3"}}>{settingsForm.portal_tagline||"Client Accounting"}</div>
+                </div>
+              </div>
+              <div style={{background:"#F4F5F7",padding:"10px 16px",display:"flex",gap:16}}>
+                {["Properties","Collection","Reports"].map(t=>(
+                  <div key={t} style={{fontSize:12,fontWeight:t==="Properties"?600:400,color:t==="Properties"?settingsForm.primary_color||"#0077C5":"#57647A",borderBottom:t==="Properties"?`2px solid ${settingsForm.primary_color||"#0077C5"}`:"none",paddingBottom:4,fontFamily:`'${settingsForm.font_family||"Inter"}',sans-serif`}}>{t}</div>
+                ))}
+              </div>
+              <div style={{background:"#F4F5F7",padding:"10px 16px"}}>
+                <div style={{display:"inline-block",background:settingsForm.primary_color||"#0077C5",color:"#fff",padding:"6px 14px",borderRadius:6,fontSize:12,fontWeight:600,fontFamily:`'${settingsForm.font_family||"Inter"}',sans-serif`}}>Save changes</div>
+              </div>
+            </div>
+
+            <button style={{...s.btnP,background:settingsForm.primary_color||QB.blue,width:"100%",opacity:settingsSaving?0.7:1}}
+              disabled={settingsSaving}
+              onClick={async()=>{
+                setSettingsSaving(true);
+                try{
+                  await updateSettings(settingsForm);
+                  flash("Settings saved — changes applied immediately!");
+                }catch(e){flash(e.message,"error");}
+                finally{setSettingsSaving(false);}
+              }}>
+              {settingsSaving?"Saving...":"💾 Save & Apply"}
+            </button>
+
+            <button style={{...s.btnS,width:"100%",marginTop:8,fontSize:12}}
+              onClick={()=>setSettingsForm({
+                app_name:"Savills Egypt CA",
+                logo_url:"https://savills-ca-portal.vercel.app/savills-logo.svg",
+                primary_color:"#0077C5",
+                accent_color:"#FEDE07",
+                font_family:"Inter",
+                email_sender_name:"Savills Egypt — Client Accounting",
+                email_sender_email:"ahmed.hamed@savills.me",
+                portal_tagline:"Client Accounting · Property Management",
+              })}>
+              Reset to defaults
+            </button>
+          </div>
+
+        </div>}
+
+        {/* ══════════════════════════════════════════════════════════════════
             MODALS
         ══════════════════════════════════════════════════════════════════ */}
 
@@ -907,6 +1086,9 @@ export default function Portal(){
               <select style={s.input} value={editReportForm.report_type} onChange={e=>setEditReportForm(p=>({...p,report_type:e.target.value}))}>
                 {reportTypes.map(t=><option key={t}>{t}</option>)}
               </select>
+            </div>
+            <div style={{marginBottom:14}}><label style={s.label}>Category <span style={{color:QB.textMuted,fontWeight:400}}>(optional)</span></label>
+              <input style={s.input} value={editReportForm.category} onChange={e=>setEditReportForm(p=>({...p,category:e.target.value}))} placeholder="e.g. Financial, Operations"/>
             </div>
             <div style={{marginBottom:20}}><label style={s.label}>Embed URL</label><textarea style={{...s.input,minHeight:80,resize:"vertical"}} value={editReportForm.embed_url} onChange={e=>setEditReportForm(p=>({...p,embed_url:e.target.value}))}/></div>
             <div style={{display:"flex",gap:8}}>
