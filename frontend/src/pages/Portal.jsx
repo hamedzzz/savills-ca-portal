@@ -754,18 +754,27 @@ export default function Portal(){
               <div style={{overflowX:"auto"}}>
                 <table style={{width:"100%",borderCollapse:"collapse"}}>
                   <thead><tr>
-                    {["Property","Month","Invoices","Rev. Share","Collection","Rate","Notes","By",...(isEditor?[""]:[])].map((h,i)=><th key={i} style={s.th}>{h}</th>)}
+                    {[...(!collFilterProp?["Property"]:[]),"Month","Invoices","Rev. Share","Collection","Rate","Notes","By",...(isEditor?[""]:[])].map((h,i)=><th key={i} style={s.th}>{h}</th>)}
                   </tr></thead>
                   <tbody>
                     {/* Group by property */}
-                    {[...new Set(filteredLogs.map(l=>l.property_name))].map(propName=>{
+                    {[...new Set(filteredLogs.map(l=>l.property_name))].map((propName,propIdx,arr)=>{
                       const propLogs=filteredLogs.filter(l=>l.property_name===propName);
-                      return propLogs.map((log,idx)=>{
+                      return [
+                        /* Property header row */
+                        propIdx>0&&<tr key={`sep-${propName}`}><td colSpan={9} style={{padding:"4px 0",background:QB.bgPage,borderBottom:`2px solid ${QB.borderLight}`}}></td></tr>,
+                        ...propLogs.map((log,idx)=>{
                         const rate=log.total_invoices>0?Math.round(log.total_collection/log.total_invoices*100):0;
-                        return<tr key={log.id} style={{background:idx%2===0?QB.bgCard:QB.bgSidebar}}>
-                          <td style={{...s.td,fontWeight:idx===0?700:400,color:idx===0?QB.textPrimary:QB.textSecondary}}>
-                            {idx===0?propName:""}
-                          </td>
+                        return<tr key={log.id} style={{background:QB.bgCard}}>
+                          {!collFilterProp&&<td style={{...s.td,fontWeight:600,color:QB.textPrimary}}>
+                            {idx===0
+                              ?<div style={{display:"flex",alignItems:"center",gap:8}}>
+                                <PropLogo url={filteredLogs.find(l=>l.property_name===propName)?.logo_url||""} name={propName} size={20}/>
+                                {propName}
+                              </div>
+                              :<span style={{color:QB.textMuted,fontSize:11,paddingLeft:28}}>↳</span>
+                            }
+                          </td>}
                           <td style={{...s.td,color:QB.textSecondary}}>{fmtMonth(log.month)}</td>
                           <td style={s.td}>EGP {fmtShort(log.total_invoices)}</td>
                           <td style={s.td}>EGP {fmtShort(log.total_revenue_share)}</td>
@@ -788,7 +797,7 @@ export default function Portal(){
                             </div>
                           </td>}
                         </tr>;
-                      });
+                      })];
                     })}
                   </tbody>
                 </table>
