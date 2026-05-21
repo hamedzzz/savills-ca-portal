@@ -104,9 +104,9 @@ export default function Portal(){
   const[editUserAccess,setEditUserAccess]=useState([]);
 
   // Properties mgmt
-  const[newProp,setNewProp]=useState({name:"",location:"",system:"",logo_url:""});
+  const[newProp,setNewProp]=useState({name:"",location:"",system:"",logo_url:"",landlord_name:""});
   const[editProp,setEditProp]=useState(null);
-  const[editPropForm,setEditPropForm]=useState({name:"",location:"",system:"",logo_url:""});
+  const[editPropForm,setEditPropForm]=useState({name:"",location:"",system:"",logo_url:"",landlord_name:""});
 
   // Reports mgmt
   const[newReport,setNewReport]=useState({property_id:"",report_name:"",report_type:"Collection",category:"",embed_url:""});
@@ -327,6 +327,7 @@ export default function Portal(){
                         <div>
                           <div style={{fontSize:16,fontWeight:700,color:QB.textPrimary}}>{p.name}</div>
                           <div style={{fontSize:12,color:QB.textMuted}}>{p.location}</div>
+                      {p.landlord_name&&<div style={{fontSize:11,color:QB.textMuted,marginTop:1}}>👤 {p.landlord_name}</div>}
                         </div>
                       </div>
                       <Badge label={p.system||"—"} color={p.system==="Oracle"?"purple":"green"}/>
@@ -341,7 +342,7 @@ export default function Portal(){
                   {isAdmin&&<>
                     <div style={s.divider}/>
                     <div style={{display:"flex",gap:8}}>
-                      <button style={{...s.btnS,padding:"4px 12px",fontSize:12}} onClick={()=>{setEditProp(p);setEditPropForm({name:p.name,location:p.location||"",system:p.system||"",logo_url:p.logo_url||""});}}>Edit</button>
+                      <button style={{...s.btnS,padding:"4px 12px",fontSize:12}} onClick={()=>{setEditProp(p);setEditPropForm({name:p.name,location:p.location||"",system:p.system||"",logo_url:p.logo_url||"",landlord_name:p.landlord_name||""});}}>Edit</button>
                       <button style={{...s.btnS,padding:"4px 12px",fontSize:12,color:QB.amber,borderColor:QB.amberBorder}} onClick={async()=>{if(!confirm(`Archive "${p.name}"?`))return;await apiFetch(`/properties/${p.id}`,{method:"PATCH",body:JSON.stringify({is_active:false})});load();flash("Archived");}}>Archive</button>
                       <button style={{...s.btnS,padding:"4px 12px",fontSize:12,color:QB.red,borderColor:QB.redBorder}} onClick={async()=>{if(!confirm(`Delete "${p.name}" permanently?`))return;await apiFetch(`/properties/${p.id}`,{method:"DELETE"});load();flash("Deleted");}}>Delete</button>
                     </div>
@@ -378,10 +379,13 @@ export default function Portal(){
                 <div><label style={s.label}>Logo URL <span style={{color:QB.textMuted,fontWeight:400}}>(optional)</span></label>
                   <input style={s.input} value={newProp.logo_url} onChange={e=>setNewProp(p=>({...p,logo_url:e.target.value}))} placeholder="https://..."/>
                 </div>
+                <div><label style={s.label}>Landlord name <span style={{color:QB.textMuted,fontWeight:400}}>(optional)</span></label>
+                  <input style={s.input} value={newProp.landlord_name} onChange={e=>setNewProp(p=>({...p,landlord_name:e.target.value}))} placeholder="e.g. Arkan Development"/>
+                </div>
               </div>
               <button style={s.btnP} onClick={async()=>{
                 if(!newProp.name.trim()){flash("Name required","error");return;}
-                try{await apiFetch("/properties",{method:"POST",body:JSON.stringify(newProp)});setNewProp({name:"",location:"",system:"",logo_url:""});load();flash("Property added");}
+                try{await apiFetch("/properties",{method:"POST",body:JSON.stringify(newProp)});setNewProp({name:"",location:"",system:"",logo_url:"",landlord_name:""});load();flash("Property added");}
                 catch(e){flash(e.message,"error");}
               }}>Add property</button>
             </div>}
@@ -408,7 +412,7 @@ export default function Portal(){
                 <div key={cat} style={{marginBottom:16}}>
                   <div style={{fontSize:10,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".08em",padding:"0 12px",marginBottom:6}}>{cat}</div>
                   {propReports.filter(r=>(r.category||r.report_type)===cat).map(r=>(
-                    <button key={r.id} onClick={()=>setSelectedReport(r)} style={{display:"block",width:"100%",textAlign:"left",padding:"8px 12px",fontSize:13,border:"none",borderRadius:QB.radiusMD,background:selectedReport?.id===r.id?QB.blueLight:"transparent",color:selectedReport?.id===r.id?QB.blue:QB.textSecondary,cursor:"pointer",fontWeight:selectedReport?.id===r.id?600:400,fontFamily:QB.fontFamily,marginBottom:2}}>
+                    <button key={r.id} onClick={async()=>{setSelectedReport(r);try{await apiFetch(`/reports/${r.id}/view`,{method:"POST"});}catch(e){};}} style={{display:"block",width:"100%",textAlign:"left",padding:"8px 12px",fontSize:13,border:"none",borderRadius:QB.radiusMD,background:selectedReport?.id===r.id?QB.blueLight:"transparent",color:selectedReport?.id===r.id?QB.blue:QB.textSecondary,cursor:"pointer",fontWeight:selectedReport?.id===r.id?600:400,fontFamily:QB.fontFamily,marginBottom:2}}>
                       {r.report_name}
                     </button>
                   ))}
@@ -460,7 +464,7 @@ export default function Portal(){
                     <PropLogo url={p.logo_url} name={p.name} size={28}/>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:13,fontWeight:isSelected?600:500,color:isSelected?QB.blue:QB.textPrimary,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</div>
-                      <div style={{fontSize:11,color:QB.textMuted}}>{p.location}</div>
+                      <div style={{fontSize:11,color:QB.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.landlord_name||p.location}</div>
                     </div>
                     <div style={{
                       minWidth:20,height:20,borderRadius:10,
@@ -492,6 +496,7 @@ export default function Portal(){
                     <div style={{flex:1}}>
                       <div style={{fontSize:17,fontWeight:700,color:QB.textPrimary}}>{selectedProp.name}</div>
                       <div style={{fontSize:12,color:QB.textMuted}}>{selectedProp.location} · {selectedProp.system}</div>
+                      {selectedProp.landlord_name&&<div style={{fontSize:12,color:QB.textSecondary,marginTop:2}}>👤 {selectedProp.landlord_name}</div>}
                     </div>
                     <Badge label={selectedProp.system||"—"} color={selectedProp.system==="Oracle"?"purple":"green"}/>
                   </div>
@@ -522,7 +527,15 @@ export default function Portal(){
                                 const isActive=selectedReport?.id===r.id;
                                 return(
                                   <div key={r.id}
-                                    onClick={()=>setSelectedReport(isActive?null:r)}
+                                    onClick={async()=>{
+                                    if(!isActive){
+                                      setSelectedReport(r);
+                                      // Log the view
+                                      try{await apiFetch(`/reports/${r.id}/view`,{method:"POST"});}catch(e){}
+                                    }else{
+                                      setSelectedReport(null);
+                                    }
+                                  }}
                                     style={{
                                       padding:"14px 16px",
                                       background:isActive?QB.blueLight:QB.bgCard,
@@ -926,7 +939,7 @@ export default function Portal(){
         {tab==="activity"&&<div style={s.card}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:12}}>
             <div style={s.cardTitle}>Activity Timeline</div>
-            {isAdmin&&<div style={{display:"flex",gap:10,alignItems:"center"}}>
+            {isAdmin&&<div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
               <div>
                 <label style={{...s.label,marginBottom:2}}>Filter by user</label>
                 <select style={{...s.input,width:180}} value={actFilterUser} onChange={e=>setActFilterUser(e.target.value)}>
@@ -941,6 +954,14 @@ export default function Portal(){
                   <option value={30}>Last 30 days</option>
                   <option value={90}>Last 90 days</option>
                 </select>
+              </div>
+              <div style={{alignSelf:"flex-end"}}>
+                <button style={{...s.btnS,padding:"8px 14px",fontSize:12,color:QB.red,borderColor:QB.redBorder}}
+                  onClick={async()=>{
+                    if(!confirm("Clear ALL activity logs? This cannot be undone."))return;
+                    await apiFetch("/activity-logs",{method:"DELETE"});
+                    loadActivities();flash("Activity log cleared");
+                  }}>🗑 Clear all</button>
               </div>
             </div>}
           </div>
@@ -960,9 +981,16 @@ export default function Portal(){
                         <span style={{fontSize:13,color:QB.textSecondary}}> {a.action}</span>
                         {a.entity_name&&<span style={{fontSize:13,fontWeight:600,color:QB.textPrimary}}> {a.entity_name}</span>}
                       </div>
-                      <span style={{fontSize:11,color:QB.textMuted,flexShrink:0}}>
-                        {new Date((a.created_at.endsWith("Z")?a.created_at:a.created_at+"Z")).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Africa/Cairo"})}
-                      </span>
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                        <span style={{fontSize:11,color:QB.textMuted}}>
+                          {new Date((a.created_at.endsWith("Z")?a.created_at:a.created_at+"Z")).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Africa/Cairo"})}
+                        </span>
+                        {isAdmin&&<button style={{background:"none",border:"none",cursor:"pointer",color:QB.textMuted,fontSize:14,padding:"0 2px",lineHeight:1}} title="Delete this entry"
+                          onClick={async()=>{
+                            await apiFetch(`/activity-logs/${a.id}`,{method:"DELETE"});
+                            loadActivities();
+                          }}>✕</button>}
+                      </div>
                     </div>
                     {a.details&&<div style={{fontSize:12,color:QB.textMuted,marginTop:2}}>{a.details}</div>}
                     {isAdmin&&<Badge label={a.user_role} color={a.user_role==="admin"?"purple":a.user_role==="editor"?"blue":"gray"}/>}
@@ -1233,6 +1261,10 @@ export default function Portal(){
               <input style={s.input} value={editPropForm.logo_url} onChange={e=>setEditPropForm(p=>({...p,logo_url:e.target.value}))} placeholder="https://..."/>
             </div>
             {editPropForm.logo_url&&<div style={{marginBottom:16}}><img src={editPropForm.logo_url} alt="preview" style={{height:40,borderRadius:4,border:`1px solid ${QB.borderLight}`}} onError={e=>e.target.style.display="none"}/></div>}
+            <div style={{marginBottom:16}}>
+              <label style={s.label}>Landlord name <span style={{color:QB.textMuted,fontWeight:400}}>(optional)</span></label>
+              <input style={s.input} value={editPropForm.landlord_name} onChange={e=>setEditPropForm(p=>({...p,landlord_name:e.target.value}))} placeholder="e.g. Arkan Development"/>
+            </div>
             <div style={{display:"flex",gap:8}}>
               <button style={s.btnP} onClick={async()=>{
                 try{await apiFetch(`/properties/${editProp.id}`,{method:"PATCH",body:JSON.stringify(editPropForm)});setEditProp(null);load();flash("Updated");}
