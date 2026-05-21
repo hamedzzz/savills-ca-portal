@@ -234,11 +234,18 @@ export default function Portal(){
 
     const rowsHTML = [...new Set(logs.map(l=>l.property_name))].map(propName=>{
       const propLogs = logs.filter(l=>l.property_name===propName);
-      return propLogs.map((log,idx)=>{
+      const pInv  = propLogs.reduce((a,l)=>a+(parseFloat(l.total_invoices)||0),0);
+      const pColl = propLogs.reduce((a,l)=>a+(parseFloat(l.total_collection)||0),0);
+      const pRS   = propLogs.reduce((a,l)=>a+(parseFloat(l.total_revenue_share)||0),0);
+      const pRate = pInv>0?Math.round(pColl/pInv*100):0;
+      const pRateColor = pRate>=90?"#2CA01C":pRate>=70?"#B45309":"#C80C0F";
+      const pRateBg    = pRate>=90?"#F2FBF0":pRate>=70?"#FFFBEB":"#FEF2F2";
+
+      const dataRows = propLogs.map((log,idx)=>{
         const rate = log.total_invoices>0?Math.round(log.total_collection/log.total_invoices*100):0;
         const rateColor = rate>=90?"#2CA01C":rate>=70?"#B45309":"#C80C0F";
         const rateBg = rate>=90?"#F2FBF0":rate>=70?"#FFFBEB":"#FEF2F2";
-        return `<tr style="background:${idx%2===0?"#fff":"#F8F9FA"}">
+        return `<tr style="background:#fff">
           ${!filterProp?`<td style="padding:10px 14px;font-weight:${idx===0?700:400};color:${idx===0?"#1C1C1C":"#57647A"};border-bottom:1px solid #EEF0F3">${idx===0?propName:""}</td>`:""}
           <td style="padding:10px 14px;color:#57647A;border-bottom:1px solid #EEF0F3">${fmtMonth(log.month)}</td>
           <td style="padding:10px 14px;color:#57647A;border-bottom:1px solid #EEF0F3">EGP ${fmtShort(log.total_invoices)}</td>
@@ -248,6 +255,20 @@ export default function Portal(){
           <td style="padding:10px 14px;color:#57647A;font-size:12px;border-bottom:1px solid #EEF0F3">${log.notes||"—"}</td>
         </tr>`;
       }).join("");
+
+      // Subtotal row — only when multiple records and no property filter
+      const subtotalRow = (!filterProp && propLogs.length>1) ? `
+        <tr style="background:#EEF5FB;border-top:1px dashed #C4CBD6">
+          <td style="padding:8px 14px 8px 32px;font-weight:600;color:#0077C5;font-size:12px;border-bottom:1px solid #E3E8EF">${propName} subtotal</td>
+          <td style="padding:8px 14px;border-bottom:1px solid #E3E8EF"></td>
+          <td style="padding:8px 14px;font-weight:600;color:#1C1C1C;font-size:12px;border-bottom:1px solid #E3E8EF">EGP ${fmtShort(pInv)}</td>
+          <td style="padding:8px 14px;font-weight:600;color:#1C1C1C;font-size:12px;border-bottom:1px solid #E3E8EF">EGP ${fmtShort(pRS)}</td>
+          <td style="padding:8px 14px;font-weight:600;color:#2CA01C;font-size:12px;border-bottom:1px solid #E3E8EF">EGP ${fmtShort(pColl)}</td>
+          <td style="padding:8px 14px;border-bottom:1px solid #E3E8EF"><span style="background:${pRateBg};color:${pRateColor};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600">${pRate}%</span></td>
+          <td style="padding:8px 14px;border-bottom:1px solid #E3E8EF"></td>
+        </tr>` : "";
+
+      return dataRows + subtotalRow;
     }).join("");
 
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
