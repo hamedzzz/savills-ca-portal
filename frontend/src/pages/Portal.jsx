@@ -186,6 +186,32 @@ export default function Portal(){
     return true;
   });
 
+  // Totals from filtered logs
+  const collTotals = filteredLogs.reduce((acc,log)=>{
+    acc.invoices   += parseFloat(log.total_invoices)||0;
+    acc.revShare   += parseFloat(log.total_revenue_share)||0;
+    acc.collection += parseFloat(log.total_collection)||0;
+    return acc;
+  },{invoices:0,revShare:0,collection:0});
+  const collTotalRate = collTotals.invoices>0
+    ? Math.round(collTotals.collection/collTotals.invoices*100) : 0;
+
+  // YTD — current year, no month filter
+  const currentYear = new Date().getFullYear().toString();
+  const ytdLogs = collLogs.filter(log=>{
+    if(log.month?.startsWith(currentYear)===false) return false;
+    if(collFilterProp && String(log.property_id)!==String(collFilterProp)) return false;
+    return true;
+  });
+  const ytdTotals = ytdLogs.reduce((acc,log)=>{
+    acc.invoices   += parseFloat(log.total_invoices)||0;
+    acc.revShare   += parseFloat(log.total_revenue_share)||0;
+    acc.collection += parseFloat(log.total_collection)||0;
+    return acc;
+  },{invoices:0,revShare:0,collection:0});
+  const ytdRate = ytdTotals.invoices>0
+    ? Math.round(ytdTotals.collection/ytdTotals.invoices*100) : 0;
+
   // PDF Export function
   const exportCollectionPDF = (logs, filterProp, filterMonth, props, settings) => {
     const logoUrl = settings?.logo_url || "";
@@ -271,7 +297,21 @@ export default function Portal(){
           <th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#57647A;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #E3E8EF">Notes</th>
         </tr>
       </thead>
-      <tbody>${rowsHTML}</tbody>
+      <tbody>${rowsHTML}
+        <tr style="background:#F8F9FA;border-top:2px solid #E3E8EF">
+          ${!filterProp?`<td style="padding:10px 14px;font-weight:700;color:#1C1C1C;border-bottom:1px solid #EEF0F3;font-size:12px;text-transform:uppercase">TOTAL</td>`:""}
+          <td style="padding:10px 14px;font-weight:700;color:#1C1C1C;border-bottom:1px solid #EEF0F3;font-size:12px;text-transform:uppercase">${filterProp?"TOTAL":""}</td>
+          <td style="padding:10px 14px;font-weight:700;color:#1C1C1C;border-bottom:1px solid #EEF0F3">EGP ${fmtShort(logs.reduce((a,l)=>a+(parseFloat(l.total_invoices)||0),0))}</td>
+          <td style="padding:10px 14px;font-weight:700;color:#1C1C1C;border-bottom:1px solid #EEF0F3">EGP ${fmtShort(logs.reduce((a,l)=>a+(parseFloat(l.total_revenue_share)||0),0))}</td>
+          <td style="padding:10px 14px;font-weight:700;color:#2CA01C;border-bottom:1px solid #EEF0F3">EGP ${fmtShort(logs.reduce((a,l)=>a+(parseFloat(l.total_collection)||0),0))}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">
+            <span style="background:#F2FBF0;color:#2CA01C;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">
+              ${Math.round(logs.reduce((a,l)=>a+(parseFloat(l.total_collection)||0),0)/Math.max(logs.reduce((a,l)=>a+(parseFloat(l.total_invoices)||0),0),1)*100)}%
+            </span>
+          </td>
+          <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3"></td>
+        </tr>
+      </tbody>
     </table>
   </div>
 
@@ -730,7 +770,25 @@ export default function Portal(){
           </div>
 
           {/* Collection Log table */}
-          {collView==="log"&&<div style={s.card}>
+          {collView==="log"&&<>
+            {/* YTD Summary — only when no month filter */}
+            {!collFilterMonth&&ytdLogs.length>0&&(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+                {[
+                  {label:`YTD ${currentYear} Invoices`,  value:`EGP ${fmtShort(ytdTotals.invoices)}`,  color:QB.textPrimary},
+                  {label:`YTD ${currentYear} Collection`,value:`EGP ${fmtShort(ytdTotals.collection)}`,color:QB.green},
+                  {label:`YTD ${currentYear} Rev. Share`,value:`EGP ${fmtShort(ytdTotals.revShare)}`,  color:QB.blue},
+                  {label:`YTD ${currentYear} Rate`,      value:`${ytdRate}%`,                           color:ytdRate>=90?QB.green:ytdRate>=70?QB.amber:QB.red},
+                ].map(({label,value,color})=>(
+                  <div key={label} style={{...s.card,marginBottom:0,textAlign:"center",padding:"14px 16px"}}>
+                    <div style={{fontSize:11,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em",marginBottom:6}}>{label}</div>
+                    <div style={{fontSize:20,fontWeight:700,color}}>{value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={s.card}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:10}}>
               <div style={s.cardTitle}>Collection Records</div>
               <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -799,11 +857,24 @@ export default function Portal(){
                         </tr>;
                       })];
                     })}
+                    {/* Totals row */}
+                    {filteredLogs.length>0&&<tr style={{background:QB.bgSidebar,borderTop:`2px solid ${QB.borderCard}`}}>
+                      {!collFilterProp&&<td style={{...s.td,fontWeight:700,color:QB.textPrimary,fontSize:12}}>TOTAL</td>}
+                      <td style={{...s.td,fontWeight:700,color:QB.textPrimary,fontSize:12}}>{collFilterProp?"TOTAL":""}</td>
+                      <td style={{...s.td,fontWeight:700,color:QB.textPrimary}}>EGP {fmtShort(collTotals.invoices)}</td>
+                      <td style={{...s.td,fontWeight:700,color:QB.textPrimary}}>EGP {fmtShort(collTotals.revShare)}</td>
+                      <td style={{...s.td,fontWeight:700,color:QB.green}}>EGP {fmtShort(collTotals.collection)}</td>
+                      <td style={s.td}><RateBadge rate={collTotalRate}/></td>
+                      <td style={s.td}></td>
+                      <td style={s.td}></td>
+                      {isEditor&&<td style={s.td}></td>}
+                    </tr>}
                   </tbody>
                 </table>
               </div>
             )}
-          </div>}
+          </div>
+          </>}
 
           {/* Add/Edit form */}
           {collView==="add"&&<div style={s.card}>
