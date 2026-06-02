@@ -2,7 +2,9 @@ from fastapi import FastAPI, HTTPException, Depends, Header, UploadFile, File, F
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
-import os, json, httpx, jwt, bcrypt, psycopg2, psycopg2.extras
+import os, json, io, httpx, jwt, bcrypt, psycopg2, psycopg2.extras
+import pandas as pd
+import numpy as np
 from datetime import datetime, timedelta
 
 app = FastAPI()
@@ -174,6 +176,7 @@ def init_db():
     safe_exec(c, conn, "ALTER TABLE collection_logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()")
     safe_exec(c, conn, "ALTER TABLE collection_logs ADD CONSTRAINT collection_logs_property_month UNIQUE (property_id, month)")
     safe_exec(c, conn, "DELETE FROM properties WHERE id NOT IN (SELECT MIN(id) FROM properties GROUP BY name)")
+    safe_exec(c, conn, "ALTER TABLE rent_roll_uploads ADD COLUMN IF NOT EXISTS sub_location TEXT DEFAULT ''")
 
     conn.commit()
 
@@ -920,8 +923,6 @@ async def upload_rent_roll(
     file: UploadFile = File(...),
     current_user=Depends(require_editor)
 ):
-    import io, pandas as pd, numpy as np
-    
     content = await file.read()
     try:
         df = pd.read_excel(io.BytesIO(content), header=1, skiprows=[2])
