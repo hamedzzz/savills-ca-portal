@@ -3,8 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
 import os, json, io, httpx, jwt, bcrypt, psycopg2, psycopg2.extras
-import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
 
 app = FastAPI()
@@ -923,6 +921,8 @@ async def upload_rent_roll(
     file: UploadFile = File(...),
     current_user=Depends(require_editor)
 ):
+    import pandas as pd
+    import numpy as np
     content = await file.read()
     try:
         df = pd.read_excel(io.BytesIO(content), header=1, skiprows=[2])
