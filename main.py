@@ -88,6 +88,7 @@ def init_db():
     c.execute("""CREATE TABLE IF NOT EXISTS rent_roll_uploads (
         id SERIAL PRIMARY KEY,
         property_id INTEGER NOT NULL REFERENCES properties(id),
+        sub_location TEXT DEFAULT '',
         filename TEXT NOT NULL,
         uploaded_by INTEGER NOT NULL REFERENCES ca_users(id),
         upload_date TIMESTAMP DEFAULT NOW(),
@@ -915,6 +916,7 @@ def review_edit_request(req_id: int, data: dict, admin=Depends(require_admin)):
 @app.post("/rent-roll/upload")
 async def upload_rent_roll(
     property_id: int = Form(...),
+    sub_location: str = Form(default=""),
     file: UploadFile = File(...),
     current_user=Depends(require_editor)
 ):
@@ -926,6 +928,13 @@ async def upload_rent_roll(
     except Exception as e:
         raise HTTPException(400, f"Could not read Excel file: {e}")
     
+    # Auto-detect sub_location from Project column
+    if not sub_location and 'Project' in df.columns:
+        projects = df['Project'].dropna().unique()
+        projects = [p for p in projects if str(p).strip().lower() != 'total']
+        if len(projects) == 1:
+            sub_location = str(projects[0]).strip()
+
     # Filter active leases
     rent = df[(df['Status']=='Approved') & (df['Element Group']=='Rent')].copy()
     sc_df = df[(df['Status']=='Approved') & (df['Element Group']=='Service Charge')].copy()
@@ -968,16 +977,21 @@ async def upload_rent_roll(
     
     conn = get_db(); c = conn.cursor()
     
-    # Delete previous upload for this property
-    c.execute("DELETE FROM rent_roll_uploads WHERE property_id=%s", (property_id,))
+    # Delete previous upload for this property+sub_location
+    if sub_location:
+        c.execute("DELETE FROM rent_roll_uploads WHERE property_id=%s AND sub_location=%s",
+                 (property_id, sub_location))
+    else:
+        c.execute("DELETE FROM rent_roll_uploads WHERE property_id=%s AND (sub_location='' OR sub_location IS NULL)",
+                 (property_id,))
     
     # Insert summary
     c.execute("""INSERT INTO rent_roll_uploads
-        (property_id,filename,uploaded_by,report_date,active_leases,unique_tenants,
+        (property_id,sub_location,filename,uploaded_by,report_date,active_leases,unique_tenants,
          total_gla,annualized_rent,monthly_rent,monthly_sc,
          expiry_0_1yr,expiry_1_2yr,expiry_2_3yr,expiry_3plus)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
-        (property_id, file.filename, current_user["id"], report_month,
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+        (property_id, sub_location, file.filename, current_user["id"], report_month,
          summary['active_leases'], summary['unique_tenants'],
          summary['total_gla'], summary['annualized_rent'],
          summary['monthly_rent'], summary['monthly_sc'],
@@ -1026,15 +1040,16 @@ async def upload_rent_roll(
     log_activity(conn, current_user["id"], "uploaded rent roll", "property",
                  str(property_id), f"leases={summary['active_leases']} month={report_month}")
     conn.commit(); conn.close()
-    return {"ok": True, "upload_id": upload_id, **summary}
+    return {"ok": True, "upload_id": upload_id, "sub_location": sub_location, **summary}
 
 @app.get("/rent-roll/{property_id}")
 def get_rent_roll(property_id: int, current_user=Depends(get_current_user)):
     conn = get_db(); c = conn.cursor()
-    c.execute("SELECT * FROM rent_roll_uploads WHERE property_id=%s ORDER BY upload_date DESC LIMIT 1", (property_id,))
-    row = c.fetchone()
+    c.execute("""SELECT DISTINCT ON (sub_location) * FROM rent_roll_uploads
+                 WHERE property_id=%s ORDER BY sub_location, upload_date DESC""", (property_id,))
+    rows = [dict(r) for r in c.fetchall()]
     conn.close()
-    return dict(row) if row else None
+    return rows
 
 @app.get("/rent-roll/{property_id}/leases")
 def get_rent_roll_leases(property_id: int, current_user=Depends(get_current_user)):
@@ -1050,10 +1065,10 @@ def get_rent_roll_leases(property_id: int, current_user=Depends(get_current_user
 @app.get("/rent-roll")
 def get_all_rent_rolls(current_user=Depends(get_current_user)):
     conn = get_db(); c = conn.cursor()
-    c.execute("""SELECT u.*, p.name as property_name
+    c.execute("""SELECT DISTINCT ON (u.property_id, u.sub_location) u.*, p.name as property_name
                  FROM rent_roll_uploads u
                  JOIN properties p ON u.property_id=p.id
-                 ORDER BY u.upload_date DESC""")
+                 ORDER BY u.property_id, u.sub_location, u.upload_date DESC""")
     rows = [dict(r) for r in c.fetchall()]
     conn.close()
     return rows
