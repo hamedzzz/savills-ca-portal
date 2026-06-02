@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
-import os, httpx, jwt, bcrypt, psycopg2, psycopg2.extras
+import os, json, httpx, jwt, bcrypt, psycopg2, psycopg2.extras
 from datetime import datetime, timedelta
 
 app = FastAPI()
