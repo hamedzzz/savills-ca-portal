@@ -979,6 +979,9 @@ export default function Portal(){
           {/* Add/Edit form */}
           {collView==="add"&&<div style={s.card}>
             <div style={s.cardTitle}>{editingLog?"Edit Collection Record":"Add Collection Record"}</div>
+            {!isAdmin&&!editingLog&&<div style={{marginBottom:16,padding:"10px 14px",background:QB.amberBg,borderRadius:QB.radiusMD,border:`1px solid ${QB.amberBorder}`,fontSize:12,color:QB.amber}}>
+              ⚠ New records require admin approval before appearing in the log.
+            </div>}
             <div style={s.formGrid}>
               <div><label style={s.label}>Property</label>
                 <select style={s.input} value={collForm.property_id} onChange={e=>setCollForm(f=>({...f,property_id:e.target.value}))} disabled={!!editingLog}>
@@ -1014,13 +1017,21 @@ export default function Portal(){
                 if(!collForm.property_id||!collForm.month){flash("Property and month required","error");return;}
                 try{
                   if(editingLog){
+                    // Editors use Request Edit flow — handled via modal, not here
+                    // This path only reached by admin
                     await apiFetch(`/collection-logs/${editingLog.id}`,{method:"PATCH",body:JSON.stringify({total_invoices:parseFloat(collForm.total_invoices)||0,total_revenue_share:parseFloat(collForm.total_revenue_share)||0,total_collection:parseFloat(collForm.total_collection)||0,notes:collForm.notes})});
                     flash("Record updated");
+                    setEditingLog(null);setCollView("log");load();
                   }else{
-                    await apiFetch("/collection-logs",{method:"POST",body:JSON.stringify({...collForm,property_id:parseInt(collForm.property_id),total_invoices:parseFloat(collForm.total_invoices)||0,total_revenue_share:parseFloat(collForm.total_revenue_share)||0,total_collection:parseFloat(collForm.total_collection)||0})});
-                    flash("Record added");
+                    const res=await apiFetch("/collection-logs",{method:"POST",body:JSON.stringify({...collForm,property_id:parseInt(collForm.property_id),total_invoices:parseFloat(collForm.total_invoices)||0,total_revenue_share:parseFloat(collForm.total_revenue_share)||0,total_collection:parseFloat(collForm.total_collection)||0})});
+                    if(res?.pending_approval){
+                      flash("Request submitted — pending admin approval ✓","success");
+                      loadEditRequests();
+                    }else{
+                      flash("Record added");
+                    }
+                    setEditingLog(null);setCollView("log");load();
                   }
-                  setEditingLog(null);setCollView("log");load();
                 }catch(e){flash(e.message,"error");}
               }}>{editingLog?"Save changes":"Add record"}</button>
               <button style={s.btnS} onClick={()=>{setEditingLog(null);setCollView("log");}}>Cancel</button>
@@ -1367,15 +1378,49 @@ export default function Portal(){
                           <span style={{padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:600,background:statusBg,color:statusColor}}>{r.status}</span>
                         </div>
                         {r.reason&&<div style={{fontSize:12,color:QB.textSecondary,marginBottom:8,fontStyle:"italic"}}>"{r.reason}"</div>}
-                        {/* Show proposed changes */}
-                        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-                          {Object.entries(changes).map(([k,v])=>(
-                            <div key={k} style={{padding:"4px 10px",background:QB.bgSidebar,borderRadius:QB.radiusMD,border:`1px solid ${QB.borderLight}`,fontSize:12}}>
-                              <span style={{color:QB.textMuted}}>{k.replace(/_/g," ")}: </span>
-                              <span style={{fontWeight:600,color:QB.textPrimary}}>EGP {fmtShort(v)}</span>
+                        {/* Show proposed changes — before vs after */}
+                        {(()=>{
+                          const isNew=changes._new_record;
+                          const fields=["total_invoices","total_revenue_share","total_collection","notes"].filter(f=>f in changes);
+                          const fieldLabels={total_invoices:"Invoices",total_revenue_share:"Rev. Share",total_collection:"Collection",notes:"Notes"};
+                          return(
+                            <div style={{marginTop:8}}>
+                              {isNew&&<div style={{fontSize:11,fontWeight:600,color:QB.amber,textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>New record request</div>}
+                              <table style={{borderCollapse:"collapse",fontSize:12,width:"100%",maxWidth:560}}>
+                                <thead>
+                                  <tr>
+                                    <th style={{padding:"4px 12px 4px 0",color:QB.textMuted,fontWeight:600,textAlign:"left",fontSize:11,textTransform:"uppercase",letterSpacing:".06em"}}>Field</th>
+                                    {!isNew&&<th style={{padding:"4px 12px",color:QB.textMuted,fontWeight:600,textAlign:"right",fontSize:11,textTransform:"uppercase",letterSpacing:".06em"}}>Current</th>}
+                                    <th style={{padding:"4px 0 4px 12px",color:QB.blue,fontWeight:600,textAlign:"right",fontSize:11,textTransform:"uppercase",letterSpacing:".06em"}}>{isNew?"Value":"Requested"}</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {fields.map(f=>{
+                                    const logData=collLogs.find(l=>l.id===r.log_id);
+                                    const oldVal=logData?logData[f]:null;
+                                    const newVal=changes[f];
+                                    const isNum=f!=="notes";
+                                    const changed=oldVal!==null&&String(oldVal)!==String(newVal);
+                                    return(
+                                      <tr key={f} style={{borderTop:`1px solid ${QB.borderLight}`}}>
+                                        <td style={{padding:"6px 12px 6px 0",color:QB.textSecondary}}>{fieldLabels[f]||f}</td>
+                                        {!isNew&&<td style={{padding:"6px 12px",textAlign:"right",color:QB.textMuted,fontFamily:"monospace",fontSize:12}}>
+                                          {oldVal!==null?(isNum?`EGP ${fmtShort(oldVal)}`:oldVal||"—"):"—"}
+                                        </td>}
+                                        <td style={{padding:"6px 0 6px 12px",textAlign:"right",fontWeight:600,fontFamily:isNum?"monospace":"inherit",fontSize:12,
+                                          color:changed?QB.blue:QB.textPrimary,
+                                          background:changed?"#EEF5FB":"transparent",borderRadius:4,paddingLeft:8,paddingRight:8}}>
+                                          {isNum?`EGP ${fmtShort(newVal)}`:newVal||"—"}
+                                          {changed&&<span style={{marginLeft:4,fontSize:10,color:QB.blue}}>↑</span>}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
                             </div>
-                          ))}
-                        </div>
+                          );
+                        })()}
                         {r.review_note&&<div style={{marginTop:8,fontSize:12,color:QB.textSecondary}}>Admin note: <em>{r.review_note}</em></div>}
                       </div>
                       <div style={{display:"flex",gap:8,flexShrink:0,flexDirection:"column",alignItems:"flex-end"}}>
