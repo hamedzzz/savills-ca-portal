@@ -566,6 +566,8 @@ def delete_collection_log(log_id: int, admin=Depends(require_admin)):
     c.execute("""SELECT cl.month, p.name FROM collection_logs cl
                  JOIN properties p ON cl.property_id=p.id WHERE cl.id=%s""", (log_id,))
     row = c.fetchone()
+    # Delete related edit requests first to avoid FK constraint
+    c.execute("DELETE FROM edit_requests WHERE log_id=%s", (log_id,))
     c.execute("DELETE FROM collection_logs WHERE id=%s", (log_id,))
     log_activity(conn, admin["id"], "deleted collection record", "collection",
                  row["name"] if row else str(log_id),
