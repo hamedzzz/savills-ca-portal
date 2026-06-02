@@ -506,6 +506,23 @@ def list_collection_logs(property_id: int = None, month: str = None,
 @app.post("/collection-logs", status_code=201)
 def create_collection_log(data: CollectionLogCreate, current_user=Depends(require_editor)):
     conn = get_db(); c = conn.cursor()
+    # Admins add directly; editors submit approval request
+    if current_user["role"] != "admin":
+        c.execute("""INSERT INTO edit_requests
+            (requested_by, property_id, log_id, month, field_changes, reason)
+            VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
+            (current_user["id"], data.property_id, None, data.month,
+             json.dumps({"total_invoices": data.total_invoices,
+                         "total_revenue_share": data.total_revenue_share,
+                         "total_collection": data.total_collection,
+                         "notes": data.notes, "_new_record": True}),
+             "New collection record request"))
+        req_id = c.fetchone()["id"]
+        log_activity(conn, current_user["id"], "submitted add record request", "collection",
+                     data.month, f"property_id={data.property_id}")
+        conn.commit(); conn.close()
+        return {"id": req_id, "pending_approval": True}
+    # Admin adds directly
     try:
         c.execute("""INSERT INTO collection_logs
                      (property_id,month,total_invoices,total_revenue_share,total_collection,notes,created_by,updated_by)
@@ -513,7 +530,6 @@ def create_collection_log(data: CollectionLogCreate, current_user=Depends(requir
                  (data.property_id, data.month, data.total_invoices, data.total_revenue_share,
                   data.total_collection, data.notes, current_user["id"], current_user["id"]))
         new_id = c.fetchone()["id"]
-        # Get property name for log
         c.execute("SELECT name FROM properties WHERE id=%s", (data.property_id,))
         prop = c.fetchone()
         log_activity(conn, current_user["id"], "added collection record", "collection",
@@ -810,12 +826,30 @@ def review_edit_request(req_id: int, data: dict, admin=Depends(require_admin)):
 
     if action == "approve":
         # Apply the changes to collection_logs
-        changes = req["field_changes"] if isinstance(req["field_changes"], dict) else json.loads(req["field_changes"])
-        if req["log_id"]:
-            sets = ", ".join([f"{k}=%s" for k in changes.keys()])
-            vals = list(changes.values()) + [req["log_id"]]
-            c.execute(f"UPDATE collection_logs SET {sets}, updated_by=%s WHERE id=%s",
-                     vals + [admin["id"], req["log_id"]])
+        fc = req["field_changes"]
+        if isinstance(fc, str):
+            changes = json.loads(fc)
+        elif hasattr(fc, 'adapted'):
+            changes = dict(fc)
+        else:
+            changes = dict(fc) if fc else {}
+        allowed_fields = {"total_invoices","total_revenue_share","total_collection","notes"}
+        safe_changes = {k: v for k,v in changes.items() if k in allowed_fields}
+        if changes.get("_new_record") and not req["log_id"]:
+            # Create new collection log
+            c.execute("""INSERT INTO collection_logs
+                (property_id,month,total_invoices,total_revenue_share,total_collection,notes,created_by,updated_by)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (req["property_id"], req["month"],
+                 safe_changes.get("total_invoices",0),
+                 safe_changes.get("total_revenue_share",0),
+                 safe_changes.get("total_collection",0),
+                 safe_changes.get("notes",""),
+                 req["requested_by"], admin["id"]))
+        elif req["log_id"] and safe_changes:
+            sets = ", ".join([f"{k}=%s" for k in safe_changes.keys()])
+            c.execute(f"UPDATE collection_logs SET {sets}, updated_by=%s, updated_at=NOW() WHERE id=%s",
+                     (*safe_changes.values(), admin["id"], req["log_id"]))
         c.execute("""UPDATE edit_requests SET status='approved', reviewed_by=%s,
                      review_note=%s, reviewed_at=NOW() WHERE id=%s""",
                  (admin["id"], note, req_id))
