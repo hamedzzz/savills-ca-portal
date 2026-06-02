@@ -85,6 +85,21 @@ def init_db():
         embed_url TEXT DEFAULT '', is_active BOOLEAN DEFAULT TRUE
     )""")
 
+    c.execute("""CREATE TABLE IF NOT EXISTS edit_requests (
+        id SERIAL PRIMARY KEY,
+        requested_by INTEGER NOT NULL REFERENCES ca_users(id),
+        property_id INTEGER NOT NULL REFERENCES properties(id),
+        log_id INTEGER REFERENCES collection_logs(id),
+        month TEXT NOT NULL,
+        field_changes JSONB NOT NULL,
+        reason TEXT DEFAULT '',
+        status TEXT DEFAULT 'pending',
+        reviewed_by INTEGER REFERENCES ca_users(id),
+        review_note TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW(),
+        reviewed_at TIMESTAMP
+    )""")
+
     c.execute("""CREATE TABLE IF NOT EXISTS activity_logs (
         id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL REFERENCES ca_users(id),
@@ -731,6 +746,88 @@ def clear_activity_logs(admin=Depends(require_admin)):
     """Clear all activity logs"""
     conn = get_db(); c = conn.cursor()
     c.execute("DELETE FROM activity_logs")
+    conn.commit(); conn.close()
+    return {"ok": True}
+
+# ── Edit Requests ─────────────────────────────────────────────────────────────
+@app.get("/edit-requests")
+def get_edit_requests(current_user=Depends(get_current_user)):
+    conn = get_db(); c = conn.cursor()
+    if current_user["role"] == "admin":
+        c.execute("""
+            SELECT er.*, u.full_name as requester_name, p.name as property_name
+            FROM edit_requests er
+            JOIN ca_users u ON er.requested_by=u.id
+            JOIN properties p ON er.property_id=p.id
+            ORDER BY er.created_at DESC
+        """)
+    else:
+        c.execute("""
+            SELECT er.*, u.full_name as requester_name, p.name as property_name
+            FROM edit_requests er
+            JOIN ca_users u ON er.requested_by=u.id
+            JOIN properties p ON er.property_id=p.id
+            WHERE er.requested_by=%s
+            ORDER BY er.created_at DESC
+        """, (current_user["id"],))
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return rows
+
+@app.get("/edit-requests/pending-count")
+def get_pending_count(admin=Depends(require_admin)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT COUNT(*) as cnt FROM edit_requests WHERE status='pending'")
+    cnt = c.fetchone()["cnt"]
+    conn.close()
+    return {"count": cnt}
+
+@app.post("/edit-requests")
+def create_edit_request(data: dict, current_user=Depends(get_current_user)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("""INSERT INTO edit_requests
+        (requested_by, property_id, log_id, month, field_changes, reason)
+        VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
+        (current_user["id"], data["property_id"], data.get("log_id"),
+         data["month"], json.dumps(data["field_changes"]), data.get("reason","")))
+    req_id = c.fetchone()["id"]
+    log_activity(conn, current_user["id"], "submitted edit request", "collection",
+                 data.get("month",""), f"property_id={data['property_id']}")
+    conn.commit(); conn.close()
+    return {"id": req_id}
+
+@app.patch("/edit-requests/{req_id}")
+def review_edit_request(req_id: int, data: dict, admin=Depends(require_admin)):
+    """Approve or reject an edit request"""
+    action = data.get("action")  # "approve" or "reject"
+    note = data.get("note", "")
+    conn = get_db(); c = conn.cursor()
+
+    c.execute("SELECT * FROM edit_requests WHERE id=%s", (req_id,))
+    req = c.fetchone()
+    if not req:
+        conn.close(); raise HTTPException(404, "Request not found")
+
+    if action == "approve":
+        # Apply the changes to collection_logs
+        changes = req["field_changes"] if isinstance(req["field_changes"], dict) else json.loads(req["field_changes"])
+        if req["log_id"]:
+            sets = ", ".join([f"{k}=%s" for k in changes.keys()])
+            vals = list(changes.values()) + [req["log_id"]]
+            c.execute(f"UPDATE collection_logs SET {sets}, updated_by=%s WHERE id=%s",
+                     vals + [admin["id"], req["log_id"]])
+        c.execute("""UPDATE edit_requests SET status='approved', reviewed_by=%s,
+                     review_note=%s, reviewed_at=NOW() WHERE id=%s""",
+                 (admin["id"], note, req_id))
+        log_activity(conn, admin["id"], "approved edit request", "collection",
+                     str(req["month"]), f"req_id={req_id}")
+    elif action == "reject":
+        c.execute("""UPDATE edit_requests SET status='rejected', reviewed_by=%s,
+                     review_note=%s, reviewed_at=NOW() WHERE id=%s""",
+                 (admin["id"], note, req_id))
+        log_activity(conn, admin["id"], "rejected edit request", "collection",
+                     str(req["month"]), f"req_id={req_id}")
+
     conn.commit(); conn.close()
     return {"ok": True}
 
