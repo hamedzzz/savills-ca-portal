@@ -370,8 +370,12 @@ export default function Portal(){
   const loadRentRolls=async()=>{
     const all=await apiFetch("/rent-roll");
     if(all){
+      // Group by property_id — each property can have multiple sub_locations
       const map={};
-      all.forEach(r=>{ map[r.property_id]=r; });
+      all.forEach(r=>{
+        if(!map[r.property_id]) map[r.property_id]=[];
+        map[r.property_id].push(r);
+      });
       setRentRolls(map);
     }
   };
@@ -588,22 +592,27 @@ export default function Portal(){
                       {reports.filter(r=>r.property_id===p.id).length===0&&<span style={{fontSize:11,color:QB.textMuted}}>No reports yet</span>}
                     </div>
                     <PropertySummary propId={p.id}/>
-                    {rentRolls[p.id]&&(
-                      <div style={{marginBottom:8,padding:"10px 12px",background:"#F0FDF4",borderRadius:QB.radiusMD,border:"1px solid #B7E5B0"}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                          <span style={{fontSize:11,fontWeight:700,color:QB.green,textTransform:"uppercase",letterSpacing:".06em"}}>📋 Rent Roll · {fmtMonth(rentRolls[p.id].report_date)}</span>
-                          <button style={{background:"none",border:"none",fontSize:11,color:QB.blue,cursor:"pointer",padding:0}} onClick={e=>{e.stopPropagation();setShowRentRoll(p.id);}}>View →</button>
-                        </div>
-                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4}}>
-                          <div><div style={{fontSize:10,color:QB.textMuted}}>Active Leases</div><div style={{fontSize:12,fontWeight:600,color:QB.textPrimary}}>{rentRolls[p.id].active_leases}</div></div>
-                          <div><div style={{fontSize:10,color:QB.textMuted}}>Total GLA</div><div style={{fontSize:12,fontWeight:600,color:QB.textPrimary}}>{fmtShort(rentRolls[p.id].total_gla)} m²</div></div>
-                          <div><div style={{fontSize:10,color:QB.textMuted}}>Ann. Rent</div><div style={{fontSize:12,fontWeight:600,color:QB.green}}>EGP {fmtShort(rentRolls[p.id].annualized_rent)}</div></div>
-                        </div>
-                        <div style={{marginTop:6,display:"flex",gap:4,flexWrap:"wrap"}}>
-                          <span style={{padding:"1px 7px",borderRadius:10,fontSize:10,background:"#FEF2F2",color:"#C80C0F",fontWeight:600}}>🔴 {rentRolls[p.id].expiry_0_1yr} exp &lt;1yr</span>
-                          <span style={{padding:"1px 7px",borderRadius:10,fontSize:10,background:"#FFFBEB",color:"#B45309",fontWeight:600}}>🟡 {rentRolls[p.id].expiry_1_2yr} exp 1-2yr</span>
-                          <span style={{padding:"1px 7px",borderRadius:10,fontSize:10,background:"#F2FBF0",color:"#2CA01C",fontWeight:600}}>🟢 {rentRolls[p.id].expiry_3plus} exp &gt;3yr</span>
-                        </div>
+                    {rentRolls[p.id]&&rentRolls[p.id].length>0&&(
+                      <div style={{marginBottom:8}}>
+                        <div style={{fontSize:11,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em",marginBottom:6}}>📋 Rent Roll</div>
+                        {rentRolls[p.id].map((rr,ri)=>(
+                          <div key={ri} style={{marginBottom:6,padding:"10px 12px",background:"#F0FDF4",borderRadius:QB.radiusMD,border:"1px solid #B7E5B0"}}>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                              <span style={{fontSize:11,fontWeight:700,color:QB.green}}>{rr.sub_location||"Rent Roll"} · {fmtMonth(rr.report_date)}</span>
+                              <button style={{background:"none",border:"none",fontSize:11,color:QB.blue,cursor:"pointer",padding:0}} onClick={e=>{e.stopPropagation();setShowRentRoll(rr);}}>View →</button>
+                            </div>
+                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4}}>
+                              <div><div style={{fontSize:10,color:QB.textMuted}}>Leases</div><div style={{fontSize:12,fontWeight:600,color:QB.textPrimary}}>{rr.active_leases}</div></div>
+                              <div><div style={{fontSize:10,color:QB.textMuted}}>GLA</div><div style={{fontSize:12,fontWeight:600,color:QB.textPrimary}}>{fmtShort(rr.total_gla)} m²</div></div>
+                              <div><div style={{fontSize:10,color:QB.textMuted}}>Ann. Rent</div><div style={{fontSize:12,fontWeight:600,color:QB.green}}>EGP {fmtShort(rr.annualized_rent)}</div></div>
+                            </div>
+                            <div style={{marginTop:5,display:"flex",gap:4,flexWrap:"wrap"}}>
+                              <span style={{padding:"1px 6px",borderRadius:10,fontSize:10,background:"#FEF2F2",color:"#C80C0F",fontWeight:600}}>🔴 {rr.expiry_0_1yr} &lt;1yr</span>
+                              <span style={{padding:"1px 6px",borderRadius:10,fontSize:10,background:"#FFFBEB",color:"#B45309",fontWeight:600}}>🟡 {rr.expiry_1_2yr} 1-2yr</span>
+                              <span style={{padding:"1px 6px",borderRadius:10,fontSize:10,background:"#F2FBF0",color:"#2CA01C",fontWeight:600}}>🟢 {rr.expiry_3plus} &gt;3yr</span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     )}
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -1849,9 +1858,8 @@ export default function Portal(){
 
         {/* Rent Roll Detail Modal */}
         {showRentRoll&&(()=>{
-          const rr=rentRolls[showRentRoll];
-          if(!rr)return null;
-          const prop=properties.find(p=>p.id===showRentRoll);
+          const rr=showRentRoll;
+          const prop=properties.find(p=>p.id===rr.property_id);
           return(
             <div style={s.overlay} onClick={()=>setShowRentRoll(null)}>
               <div style={{...s.modal,width:700,maxWidth:"95vw"}} onClick={e=>e.stopPropagation()}>
