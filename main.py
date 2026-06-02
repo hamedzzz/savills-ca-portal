@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException, Depends, Header, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
@@ -83,6 +83,50 @@ def init_db():
         category TEXT DEFAULT '',
         pbi_report_id TEXT DEFAULT '', pbi_workspace_id TEXT DEFAULT '',
         embed_url TEXT DEFAULT '', is_active BOOLEAN DEFAULT TRUE
+    )""")
+
+    c.execute("""CREATE TABLE IF NOT EXISTS rent_roll_uploads (
+        id SERIAL PRIMARY KEY,
+        property_id INTEGER NOT NULL REFERENCES properties(id),
+        filename TEXT NOT NULL,
+        uploaded_by INTEGER NOT NULL REFERENCES ca_users(id),
+        upload_date TIMESTAMP DEFAULT NOW(),
+        report_date TEXT NOT NULL,
+        active_leases INTEGER DEFAULT 0,
+        unique_tenants INTEGER DEFAULT 0,
+        total_gla NUMERIC DEFAULT 0,
+        annualized_rent NUMERIC DEFAULT 0,
+        monthly_rent NUMERIC DEFAULT 0,
+        monthly_sc NUMERIC DEFAULT 0,
+        expiry_0_1yr INTEGER DEFAULT 0,
+        expiry_1_2yr INTEGER DEFAULT 0,
+        expiry_2_3yr INTEGER DEFAULT 0,
+        expiry_3plus INTEGER DEFAULT 0
+    )""")
+
+    c.execute("""CREATE TABLE IF NOT EXISTS rent_roll_leases (
+        id SERIAL PRIMARY KEY,
+        upload_id INTEGER NOT NULL REFERENCES rent_roll_uploads(id) ON DELETE CASCADE,
+        property_id INTEGER NOT NULL REFERENCES properties(id),
+        document_no TEXT DEFAULT '',
+        tenant_brand TEXT DEFAULT '',
+        tenant_legal TEXT DEFAULT '',
+        unit_code TEXT DEFAULT '',
+        unit_type TEXT DEFAULT '',
+        floor TEXT DEFAULT '',
+        gla NUMERIC DEFAULT 0,
+        lease_start DATE,
+        lease_end DATE,
+        remaining_years NUMERIC DEFAULT 0,
+        remaining_months NUMERIC DEFAULT 0,
+        annualized_rent NUMERIC DEFAULT 0,
+        annualized_sc NUMERIC DEFAULT 0,
+        monthly_rent NUMERIC DEFAULT 0,
+        rent_per_sqm NUMERIC DEFAULT 0,
+        sc_per_sqm NUMERIC DEFAULT 0,
+        escalation_rate NUMERIC DEFAULT 0,
+        revenue_sharing_rate NUMERIC DEFAULT 0,
+        security_deposit NUMERIC DEFAULT 0
     )""")
 
     c.execute("""CREATE TABLE IF NOT EXISTS edit_requests (
@@ -866,6 +910,153 @@ def review_edit_request(req_id: int, data: dict, admin=Depends(require_admin)):
 
     conn.commit(); conn.close()
     return {"ok": True}
+
+# ── Rent Roll ─────────────────────────────────────────────────────────────────
+@app.post("/rent-roll/upload")
+async def upload_rent_roll(
+    property_id: int = Form(...),
+    file: UploadFile = File(...),
+    current_user=Depends(require_editor)
+):
+    import io, pandas as pd, numpy as np
+    
+    content = await file.read()
+    try:
+        df = pd.read_excel(io.BytesIO(content), header=1, skiprows=[2])
+    except Exception as e:
+        raise HTTPException(400, f"Could not read Excel file: {e}")
+    
+    # Filter active leases
+    rent = df[(df['Status']=='Approved') & (df['Element Group']=='Rent')].copy()
+    sc_df = df[(df['Status']=='Approved') & (df['Element Group']=='Service Charge')].copy()
+    
+    if len(rent) == 0:
+        raise HTTPException(400, "No approved rent rows found in file")
+    
+    # Get current month for monthly figures
+    from datetime import date
+    today = date.today()
+    report_month = today.strftime('%Y-%m')
+    month_col = report_month
+    
+    # Find latest available month column if current not present
+    month_cols = [c for c in df.columns if str(c).startswith('20') and len(str(c))==7]
+    if month_col not in month_cols and month_cols:
+        month_col = sorted(month_cols)[-1]
+    
+    def safe_sum(series):
+        try: return float(series.fillna(0).sum())
+        except: return 0.0
+    
+    monthly_rent = safe_sum(rent[month_col]) if month_col in rent.columns else 0
+    monthly_sc   = safe_sum(sc_df[month_col]) if month_col in sc_df.columns else 0
+    
+    rem = pd.to_numeric(rent['Remaining Years'], errors='coerce').fillna(0)
+    
+    summary = {
+        'active_leases':   int(len(rent)),
+        'unique_tenants':  int(rent['Tenant Brand Name'].nunique()),
+        'total_gla':       safe_sum(pd.to_numeric(rent['GLA'], errors='coerce')),
+        'annualized_rent': safe_sum(pd.to_numeric(rent['Annualized Rent'], errors='coerce')),
+        'monthly_rent':    monthly_rent,
+        'monthly_sc':      monthly_sc,
+        'expiry_0_1yr':    int((rem <= 1).sum()),
+        'expiry_1_2yr':    int(((rem > 1) & (rem <= 2)).sum()),
+        'expiry_2_3yr':    int(((rem > 2) & (rem <= 3)).sum()),
+        'expiry_3plus':    int((rem > 3).sum()),
+    }
+    
+    conn = get_db(); c = conn.cursor()
+    
+    # Delete previous upload for this property
+    c.execute("DELETE FROM rent_roll_uploads WHERE property_id=%s", (property_id,))
+    
+    # Insert summary
+    c.execute("""INSERT INTO rent_roll_uploads
+        (property_id,filename,uploaded_by,report_date,active_leases,unique_tenants,
+         total_gla,annualized_rent,monthly_rent,monthly_sc,
+         expiry_0_1yr,expiry_1_2yr,expiry_2_3yr,expiry_3plus)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+        (property_id, file.filename, current_user["id"], report_month,
+         summary['active_leases'], summary['unique_tenants'],
+         summary['total_gla'], summary['annualized_rent'],
+         summary['monthly_rent'], summary['monthly_sc'],
+         summary['expiry_0_1yr'], summary['expiry_1_2yr'],
+         summary['expiry_2_3yr'], summary['expiry_3plus']))
+    upload_id = c.fetchone()["id"]
+    
+    # Insert individual leases
+    for _, row in rent.iterrows():
+        def gv(col, default=0):
+            v = row.get(col, default)
+            if pd.isna(v): return default
+            return v
+        
+        monthly = float(row[month_col]) if month_col in rent.columns and not pd.isna(row.get(month_col)) else 0
+        
+        # Match SC row for this tenant+unit
+        sc_match = sc_df[sc_df['Document No']==row.get('Document No','')]
+        ann_sc = float(sc_match['Annualized Service'].iloc[0]) if len(sc_match)>0 and not pd.isna(sc_match['Annualized Service'].iloc[0]) else 0
+        sc_sqm = float(sc_match['Service Per SQM'].iloc[0]) if len(sc_match)>0 and not pd.isna(sc_match['Service Per SQM'].iloc[0]) else 0
+        
+        lease_start = row.get('Lease Start')
+        lease_end   = row.get('Lease End')
+        if pd.isna(lease_start): lease_start = None
+        if pd.isna(lease_end):   lease_end   = None
+        
+        c.execute("""INSERT INTO rent_roll_leases
+            (upload_id,property_id,document_no,tenant_brand,tenant_legal,
+             unit_code,unit_type,floor,gla,lease_start,lease_end,
+             remaining_years,remaining_months,annualized_rent,annualized_sc,
+             monthly_rent,rent_per_sqm,sc_per_sqm,escalation_rate,
+             revenue_sharing_rate,security_deposit)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (upload_id, property_id,
+             str(gv('Document No','')), str(gv('Tenant Brand Name','')),
+             str(gv('Tenant Legal Name','')), str(gv('Unit Code','')),
+             str(gv('Unit Type','')), str(gv('Floor Number','')),
+             float(gv('GLA',0)), lease_start, lease_end,
+             float(gv('Remaining Years',0)), float(gv('Remaining Months',0)),
+             float(gv('Annualized Rent',0)), ann_sc, monthly,
+             float(gv('Indoor Rent Per Sqm',0)), sc_sqm,
+             float(gv('Rent Escalation Rate',0)),
+             float(gv('Revenue Sharing Rate',0)),
+             float(gv('Security Deposit',0))))
+    
+    log_activity(conn, current_user["id"], "uploaded rent roll", "property",
+                 str(property_id), f"leases={summary['active_leases']} month={report_month}")
+    conn.commit(); conn.close()
+    return {"ok": True, "upload_id": upload_id, **summary}
+
+@app.get("/rent-roll/{property_id}")
+def get_rent_roll(property_id: int, current_user=Depends(get_current_user)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT * FROM rent_roll_uploads WHERE property_id=%s ORDER BY upload_date DESC LIMIT 1", (property_id,))
+    row = c.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+@app.get("/rent-roll/{property_id}/leases")
+def get_rent_roll_leases(property_id: int, current_user=Depends(get_current_user)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("""SELECT l.* FROM rent_roll_leases l
+                 JOIN rent_roll_uploads u ON l.upload_id=u.id
+                 WHERE l.property_id=%s
+                 ORDER BY u.upload_date DESC, l.remaining_years ASC""", (property_id,))
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return rows
+
+@app.get("/rent-roll")
+def get_all_rent_rolls(current_user=Depends(get_current_user)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("""SELECT u.*, p.name as property_name
+                 FROM rent_roll_uploads u
+                 JOIN properties p ON u.property_id=p.id
+                 ORDER BY u.upload_date DESC""")
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return rows
 
 # ── Power BI ──────────────────────────────────────────────────────────────────
 @app.get("/pbi/embed-token/{report_id}")
