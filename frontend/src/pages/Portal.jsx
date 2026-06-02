@@ -131,6 +131,15 @@ export default function Portal(){
   const[settingsSaving,setSettingsSaving]=useState(false);
   const[settingsPreview,setSettingsPreview]=useState(false);
 
+  const[editRequests,setEditRequests]=useState([]);
+  const[pendingCount,setPendingCount]=useState(0);
+  const[showRequests,setShowRequests]=useState(false);
+  const[requestForm,setRequestForm]=useState({reason:""});
+  const[showRequestModal,setShowRequestModal]=useState(false);
+  const[requestTarget,setRequestTarget]=useState(null); // the log being requested to edit
+  const[reviewModal,setReviewModal]=useState(null);
+  const[reviewNote,setReviewNote]=useState("");
+
   const[showProfile,setShowProfile]=useState(false);
   const[profileForm,setProfileForm]=useState({full_name:"",email:"",title:""});
   const[pwForm,setPwForm]=useState({current_password:"",new_password:"",confirm:""});
@@ -192,8 +201,8 @@ export default function Portal(){
     acc.collection += parseFloat(log.total_collection)||0;
     return acc;
   },{invoices:0,revShare:0,collection:0});
-  const collTotalRate = collTotals.invoices>0
-    ? Math.round(collTotals.collection/collTotals.invoices*100) : 0;
+  const collTotalRate = (collTotals.invoices+collTotals.revShare)>0
+    ? Math.round(collTotals.collection/(collTotals.invoices+collTotals.revShare)*100) : 0;
 
   // YTD — current year, no month filter
   const currentYear = new Date().getFullYear().toString();
@@ -208,8 +217,8 @@ export default function Portal(){
     acc.collection += parseFloat(log.total_collection)||0;
     return acc;
   },{invoices:0,revShare:0,collection:0});
-  const ytdRate = ytdTotals.invoices>0
-    ? Math.round(ytdTotals.collection/ytdTotals.invoices*100) : 0;
+  const ytdRate = (ytdTotals.invoices+ytdTotals.revShare)>0
+    ? Math.round(ytdTotals.collection/(ytdTotals.invoices+ytdTotals.revShare)*100) : 0;
 
   // PDF Export function
   const exportCollectionPDF = (logs, filterProp, filterMonth, props, settings) => {
@@ -236,12 +245,13 @@ export default function Portal(){
       const pInv  = propLogs.reduce((a,l)=>a+(parseFloat(l.total_invoices)||0),0);
       const pColl = propLogs.reduce((a,l)=>a+(parseFloat(l.total_collection)||0),0);
       const pRS   = propLogs.reduce((a,l)=>a+(parseFloat(l.total_revenue_share)||0),0);
-      const pRate = pInv>0?Math.round(pColl/pInv*100):0;
+      const pRate = (pInv+pRS)>0?Math.round(pColl/(pInv+pRS)*100):0;
       const pRateColor = pRate>=90?"#2CA01C":pRate>=70?"#B45309":"#C80C0F";
       const pRateBg    = pRate>=90?"#F2FBF0":pRate>=70?"#FFFBEB":"#FEF2F2";
 
       const dataRows = propLogs.map((log,idx)=>{
-        const rate = log.total_invoices>0?Math.round(log.total_collection/log.total_invoices*100):0;
+        const base = (parseFloat(log.total_invoices)||0)+(parseFloat(log.total_revenue_share)||0);
+        const rate = base>0?Math.round(log.total_collection/base*100):0;
         const rateColor = rate>=90?"#2CA01C":rate>=70?"#B45309":"#C80C0F";
         const rateBg = rate>=90?"#F2FBF0":rate>=70?"#FFFBEB":"#FEF2F2";
         return `<tr style="background:#fff">
@@ -326,7 +336,7 @@ export default function Portal(){
           <td style="padding:10px 14px;font-weight:700;color:#2CA01C;border-bottom:1px solid #EEF0F3">EGP ${fmtShort(logs.reduce((a,l)=>a+(parseFloat(l.total_collection)||0),0))}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3">
             <span style="background:#F2FBF0;color:#2CA01C;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600">
-              ${Math.round(logs.reduce((a,l)=>a+(parseFloat(l.total_collection)||0),0)/Math.max(logs.reduce((a,l)=>a+(parseFloat(l.total_invoices)||0),0),1)*100)}%
+              ${Math.round(logs.reduce((a,l)=>a+(parseFloat(l.total_collection)||0),0)/Math.max(logs.reduce((a,l)=>a+(parseFloat(l.total_invoices)||0)+(parseFloat(l.total_revenue_share)||0),0),1)*100)}%
             </span>
           </td>
           <td style="padding:10px 14px;border-bottom:1px solid #EEF0F3"></td>
@@ -352,6 +362,15 @@ export default function Portal(){
     setTimeout(()=>{ win.print(); }, 500);
   };
 
+  const loadEditRequests=async()=>{
+    const d=await apiFetch("/edit-requests");
+    if(d)setEditRequests(d);
+    if(isAdmin){
+      const cnt=await apiFetch("/edit-requests/pending-count");
+      if(cnt)setPendingCount(cnt.count);
+    }
+  };
+
   const loadActivities=async()=>{
     let url=`/activity-logs?days=${actFilterDays}`;
     if(actFilterUser)url+=`&user_id=${actFilterUser}`;
@@ -359,7 +378,7 @@ export default function Portal(){
     if(d)setActivities(d);
   };
 
-  useEffect(()=>{load();},[]);
+  useEffect(()=>{load();loadEditRequests();},[]);
   useEffect(()=>{if(tab==="activity")loadActivities();},[tab,actFilterUser,actFilterDays]);
   useEffect(()=>{if(showProfile)setProfileForm({full_name:user?.full_name||"",email:user?.email||"",title:user?.title||""});},[showProfile]);
 
@@ -368,7 +387,7 @@ export default function Portal(){
   const reportTypes=["Collection","Aging","Budget vs Actual","Invoice Reconciliation","Income Statement","Other"];
 
   const tabs=isAdmin
-    ?["properties","reports","collection","email","manage-reports","users","activity","settings"]
+    ?["properties","reports","collection","email","manage-reports","users","requests","activity","settings"]
     :isEditor
     ?["properties","reports","collection","email"]
     :["properties","reports","collection"];
@@ -380,6 +399,7 @@ export default function Portal(){
     email:"Email",
     "manage-reports":"Manage Reports",
     users:"Users",
+    requests:"requests",
     activity:"Activity",
     settings:"⚙ Settings"
   };
@@ -438,14 +458,15 @@ export default function Portal(){
       collection: acc.collection + (parseFloat(l.total_collection)||0),
       revShare:   acc.revShare   + (parseFloat(l.total_revenue_share)||0),
     }),{invoices:0,collection:0,revShare:0});
-    const propYtdRate=propYtd.invoices>0?Math.round(propYtd.collection/propYtd.invoices*100):0;
+    const propYtdRate=(propYtd.invoices+propYtd.revShare)>0?Math.round(propYtd.collection/(propYtd.invoices+propYtd.revShare)*100):0;
 
     return(
       <div style={{marginBottom:10}}>
         <div style={{fontSize:11,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em",marginBottom:6}}>Last {data.length} {data.length===1?"month":"months"}</div>
         <div style={{display:"flex",flexDirection:"column",gap:5}}>
           {data.map((d,i)=>{
-            const rate=d.total_invoices>0?Math.round(parseFloat(d.total_collection)/parseFloat(d.total_invoices)*100):0;
+            const dBase=(parseFloat(d.total_invoices)||0)+(parseFloat(d.total_revenue_share)||0);
+            const rate=dBase>0?Math.round(parseFloat(d.total_collection)/dBase*100):0;
             return(
               <div key={i} style={{background:QB.bgSidebar,borderRadius:QB.radiusMD,padding:"8px 10px",border:`1px solid ${QB.borderLight}`}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
@@ -518,7 +539,12 @@ export default function Portal(){
         <div style={s.tabBar}>
           {tabs.map(t=>(
             <button key={t} style={s.tab(tab===t)} onClick={()=>{setTab(t);setSelectedProp(null);setSelectedReport(null);}}>
-              {tabLabels[t]}
+              {t==="requests"
+                ?<span style={{display:"flex",alignItems:"center",gap:5}}>
+                    Requests
+                    {pendingCount>0&&<span style={{background:QB.red,color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px",minWidth:16,textAlign:"center"}}>{pendingCount}</span>}
+                  </span>
+                :tabLabels[t]}
             </button>
           ))}
         </div>
@@ -867,13 +893,14 @@ export default function Portal(){
                       const subInv=propLogs.reduce((a,l)=>a+(parseFloat(l.total_invoices)||0),0);
                       const subColl=propLogs.reduce((a,l)=>a+(parseFloat(l.total_collection)||0),0);
                       const subRS=propLogs.reduce((a,l)=>a+(parseFloat(l.total_revenue_share)||0),0);
-                      const subRate=subInv>0?Math.round(subColl/subInv*100):0;
+                      const subRate=(subInv+subRS)>0?Math.round(subColl/(subInv+subRS)*100):0;
                       const rows=[];
                       if(propIdx>0) rows.push(
                         <tr key={`sep-${propName}`}><td colSpan={9} style={{padding:"4px 0",background:QB.bgPage,borderBottom:`2px solid ${QB.borderLight}`}}></td></tr>
                       );
                       propLogs.forEach((log,idx)=>{
-                        const rate=log.total_invoices>0?Math.round(log.total_collection/log.total_invoices*100):0;
+                        const logBase=(parseFloat(log.total_invoices)||0)+(parseFloat(log.total_revenue_share)||0);
+                        const rate=logBase>0?Math.round(log.total_collection/logBase*100):0;
                         rows.push(
                           <tr key={log.id} style={{background:QB.bgCard}}>
                             {!collFilterProp&&<td style={{...s.td,fontWeight:600,color:QB.textPrimary}}>
@@ -894,11 +921,19 @@ export default function Portal(){
                             <td style={{...s.td,color:QB.textMuted,fontSize:12}}>{log.updated_by_name||log.created_by_name}</td>
                             {isEditor&&<td style={s.td}>
                               <div style={{display:"flex",gap:6}}>
-                                <button style={{...s.btnS,padding:"3px 10px",fontSize:12}} onClick={()=>{
-                                  setEditingLog(log);
-                                  setCollForm({property_id:log.property_id,month:log.month,total_invoices:log.total_invoices,total_revenue_share:log.total_revenue_share,total_collection:log.total_collection,notes:log.notes||""});
-                                  setCollView("add");
-                                }}>Edit</button>
+                                {isAdmin
+                                  ?<button style={{...s.btnS,padding:"3px 10px",fontSize:12}} onClick={()=>{
+                                    setEditingLog(log);
+                                    setCollForm({property_id:log.property_id,month:log.month,total_invoices:log.total_invoices,total_revenue_share:log.total_revenue_share,total_collection:log.total_collection,notes:log.notes||""});
+                                    setCollView("add");
+                                  }}>Edit</button>
+                                  :<button style={{...s.btnS,padding:"3px 10px",fontSize:12,color:QB.amber,borderColor:QB.amberBorder}} onClick={()=>{
+                                    setRequestTarget(log);
+                                    setCollForm({property_id:log.property_id,month:log.month,total_invoices:log.total_invoices,total_revenue_share:log.total_revenue_share,total_collection:log.total_collection,notes:log.notes||""});
+                                    setRequestForm({reason:""});
+                                    setShowRequestModal(true);
+                                  }}>✏ Request Edit</button>
+                                }
                                 {isAdmin&&<button style={{...s.btnS,padding:"3px 10px",fontSize:12,color:QB.red,borderColor:QB.redBorder}} onClick={async()=>{
                                   if(!confirm("Delete this record?"))return;
                                   await apiFetch(`/collection-logs/${log.id}`,{method:"DELETE"});
@@ -971,7 +1006,7 @@ export default function Portal(){
             {/* Live rate preview */}
             {collForm.total_invoices>0&&collForm.total_collection>=""&&(
               <div style={{marginBottom:16,padding:"10px 14px",background:QB.bgSidebar,borderRadius:QB.radiusMD,border:`1px solid ${QB.borderLight}`,fontSize:13,color:QB.textSecondary}}>
-                Collection rate: <strong style={{color:QB.textPrimary}}>{Math.round((parseFloat(collForm.total_collection)||0)/(parseFloat(collForm.total_invoices)||1)*100)}%</strong>
+                Collection rate: <strong style={{color:QB.textPrimary}}>{Math.round((parseFloat(collForm.total_collection)||0)/Math.max((parseFloat(collForm.total_invoices)||0)+(parseFloat(collForm.total_revenue_share)||0),1)*100)}%</strong>
               </div>
             )}
             <div style={{display:"flex",gap:8}}>
@@ -1295,6 +1330,71 @@ export default function Portal(){
         </div>}
 
         {/* ══════════════════════════════════════════════════════════════════
+            REQUESTS TAB (admin — approve/reject edit requests)
+        ══════════════════════════════════════════════════════════════════ */}
+        {tab==="requests"&&isAdmin&&<div style={s.card}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+            <div style={s.cardTitle}>Edit Requests</div>
+            <div style={{display:"flex",gap:8}}>
+              {["all","pending","approved","rejected"].map(f=>(
+                <button key={f} style={{...s.btnS,padding:"5px 12px",fontSize:12,
+                  background:showRequests===f?QB.blue:"transparent",
+                  color:showRequests===f?"#fff":QB.textSecondary,
+                  border:`1px solid ${showRequests===f?QB.blue:QB.borderInput}`}}
+                  onClick={()=>setShowRequests(showRequests===f?false:f)}>
+                  {f.charAt(0).toUpperCase()+f.slice(1)}
+                  {f==="pending"&&pendingCount>0&&<span style={{marginLeft:5,background:QB.red,color:"#fff",borderRadius:8,fontSize:10,fontWeight:700,padding:"0 5px"}}>{pendingCount}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+          {editRequests.filter(r=>!showRequests||showRequests==="all"||r.status===showRequests).length===0
+            ?<Empty text="No edit requests"/>
+            :editRequests
+              .filter(r=>!showRequests||showRequests==="all"||r.status===showRequests)
+              .map(r=>{
+                const changes = typeof r.field_changes==="string"?JSON.parse(r.field_changes):r.field_changes;
+                const statusColor = r.status==="pending"?QB.amber:r.status==="approved"?QB.green:QB.red;
+                const statusBg = r.status==="pending"?QB.amberBg:r.status==="approved"?QB.greenBg:QB.redBg;
+                return(
+                  <div key={r.id} style={{padding:"16px 0",borderBottom:`1px solid ${QB.borderLight}`}}>
+                    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
+                      <div style={{flex:1}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                          <span style={{fontSize:13,fontWeight:600,color:QB.textPrimary}}>{r.requester_name}</span>
+                          <span style={{fontSize:12,color:QB.textMuted}}>→</span>
+                          <span style={{fontSize:13,color:QB.textSecondary}}>{r.property_name} · {fmtMonth(r.month)}</span>
+                          <span style={{padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:600,background:statusBg,color:statusColor}}>{r.status}</span>
+                        </div>
+                        {r.reason&&<div style={{fontSize:12,color:QB.textSecondary,marginBottom:8,fontStyle:"italic"}}>"{r.reason}"</div>}
+                        {/* Show proposed changes */}
+                        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                          {Object.entries(changes).map(([k,v])=>(
+                            <div key={k} style={{padding:"4px 10px",background:QB.bgSidebar,borderRadius:QB.radiusMD,border:`1px solid ${QB.borderLight}`,fontSize:12}}>
+                              <span style={{color:QB.textMuted}}>{k.replace(/_/g," ")}: </span>
+                              <span style={{fontWeight:600,color:QB.textPrimary}}>EGP {fmtShort(v)}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {r.review_note&&<div style={{marginTop:8,fontSize:12,color:QB.textSecondary}}>Admin note: <em>{r.review_note}</em></div>}
+                      </div>
+                      <div style={{display:"flex",gap:8,flexShrink:0,flexDirection:"column",alignItems:"flex-end"}}>
+                        <div style={{fontSize:11,color:QB.textMuted}}>{new Date((r.created_at.endsWith("Z")?r.created_at:r.created_at+"Z")).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Africa/Cairo"})}</div>
+                        {r.status==="pending"&&<div style={{display:"flex",gap:6}}>
+                          <button style={{...s.btnS,padding:"4px 12px",fontSize:12,color:QB.green,borderColor:QB.greenBorder}}
+                            onClick={()=>{setReviewModal({...r,action:"approve"});setReviewNote("");}}>✓ Approve</button>
+                          <button style={{...s.btnS,padding:"4px 12px",fontSize:12,color:QB.red,borderColor:QB.redBorder}}
+                            onClick={()=>{setReviewModal({...r,action:"reject"});setReviewNote("");}}>✕ Reject</button>
+                        </div>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+          }
+        </div>}
+
+        {/* ══════════════════════════════════════════════════════════════════
             SETTINGS TAB (admin only)
         ══════════════════════════════════════════════════════════════════ */}
         {tab==="settings"&&isAdmin&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,alignItems:"start"}}>
@@ -1564,6 +1664,89 @@ export default function Portal(){
                 catch(e){flash(e.message,"error");}
               }}>Save</button>
               <button style={s.btnS} onClick={()=>setEditProp(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>}
+
+        {/* Request Edit Modal (for editors) */}
+        {showRequestModal&&requestTarget&&<div style={s.overlay}>
+          <div style={{...s.modal,width:480}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+              <div style={s.modalTitle}>Request Edit — {requestTarget.property_name} · {fmtMonth(requestTarget.month)}</div>
+              <button onClick={()=>setShowRequestModal(false)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:QB.textMuted}}>✕</button>
+            </div>
+            <div style={{marginBottom:16,padding:"10px 14px",background:QB.amberBg,borderRadius:QB.radiusMD,border:`1px solid ${QB.amberBorder}`,fontSize:12,color:QB.amber}}>
+              ⚠ Your changes will be sent to the admin for approval before being applied.
+            </div>
+            <div style={s.formGrid}>
+              <div><label style={s.label}>Total Invoices (EGP)</label>
+                <input type="number" style={s.input} value={collForm.total_invoices} onChange={e=>setCollForm(f=>({...f,total_invoices:e.target.value}))} placeholder="0.00"/>
+              </div>
+              <div><label style={s.label}>Revenue Share (EGP)</label>
+                <input type="number" style={s.input} value={collForm.total_revenue_share} onChange={e=>setCollForm(f=>({...f,total_revenue_share:e.target.value}))} placeholder="0.00"/>
+              </div>
+              <div><label style={s.label}>Collection (EGP)</label>
+                <input type="number" style={s.input} value={collForm.total_collection} onChange={e=>setCollForm(f=>({...f,total_collection:e.target.value}))} placeholder="0.00"/>
+              </div>
+              <div><label style={s.label}>Notes</label>
+                <input style={s.input} value={collForm.notes} onChange={e=>setCollForm(f=>({...f,notes:e.target.value}))}/>
+              </div>
+            </div>
+            <div style={{marginBottom:20}}>
+              <label style={s.label}>Reason for change <span style={{color:QB.textMuted,fontWeight:400}}>(optional)</span></label>
+              <textarea style={{...s.input,minHeight:64,resize:"vertical"}} value={requestForm.reason} onChange={e=>setRequestForm(f=>({...f,reason:e.target.value}))} placeholder="Explain why this change is needed..."/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button style={{...s.btnP,background:QB.amber}} onClick={async()=>{
+                const changes={};
+                if(parseFloat(collForm.total_invoices)!==parseFloat(requestTarget.total_invoices))changes.total_invoices=parseFloat(collForm.total_invoices)||0;
+                if(parseFloat(collForm.total_revenue_share)!==parseFloat(requestTarget.total_revenue_share))changes.total_revenue_share=parseFloat(collForm.total_revenue_share)||0;
+                if(parseFloat(collForm.total_collection)!==parseFloat(requestTarget.total_collection))changes.total_collection=parseFloat(collForm.total_collection)||0;
+                if(collForm.notes!==requestTarget.notes)changes.notes=collForm.notes;
+                if(Object.keys(changes).length===0){flash("No changes detected","error");return;}
+                try{
+                  await apiFetch("/edit-requests",{method:"POST",body:JSON.stringify({
+                    property_id:requestTarget.property_id,
+                    log_id:requestTarget.id,
+                    month:requestTarget.month,
+                    field_changes:changes,
+                    reason:requestForm.reason,
+                  })});
+                  setShowRequestModal(false);
+                  loadEditRequests();
+                  flash("Edit request submitted — pending admin approval");
+                }catch(e){flash(e.message,"error");}
+              }}>Submit request</button>
+              <button style={s.btnS} onClick={()=>setShowRequestModal(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>}
+
+        {/* Review Modal (admin approve/reject) */}
+        {reviewModal&&<div style={s.overlay}>
+          <div style={{...s.modal,width:440}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+              <div style={s.modalTitle}>{reviewModal.action==="approve"?"✓ Approve":"✕ Reject"} Request</div>
+              <button onClick={()=>setReviewModal(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:QB.textMuted}}>✕</button>
+            </div>
+            <div style={{marginBottom:16,fontSize:13,color:QB.textSecondary}}>
+              <strong>{reviewModal.requester_name}</strong> requested to edit <strong>{reviewModal.property_name} · {fmtMonth(reviewModal.month)}</strong>
+            </div>
+            <div style={{marginBottom:20}}>
+              <label style={s.label}>Note to user <span style={{color:QB.textMuted,fontWeight:400}}>(optional)</span></label>
+              <textarea style={{...s.input,minHeight:64,resize:"vertical"}} value={reviewNote} onChange={e=>setReviewNote(e.target.value)} placeholder={reviewModal.action==="approve"?"Approved — changes applied":"Reason for rejection..."}/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button style={{...s.btnP,background:reviewModal.action==="approve"?QB.green:QB.red}} onClick={async()=>{
+                try{
+                  await apiFetch(`/edit-requests/${reviewModal.id}`,{method:"PATCH",body:JSON.stringify({action:reviewModal.action,note:reviewNote})});
+                  setReviewModal(null);
+                  loadEditRequests();
+                  load();
+                  flash(reviewModal.action==="approve"?"Request approved & changes applied":"Request rejected");
+                }catch(e){flash(e.message,"error");}
+              }}>{reviewModal.action==="approve"?"Approve & Apply":"Reject"}</button>
+              <button style={s.btnS} onClick={()=>setReviewModal(null)}>Cancel</button>
             </div>
           </div>
         </div>}
