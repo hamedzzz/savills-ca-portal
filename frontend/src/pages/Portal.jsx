@@ -131,6 +131,11 @@ export default function Portal(){
   const[settingsSaving,setSettingsSaving]=useState(false);
   const[settingsPreview,setSettingsPreview]=useState(false);
 
+  const[rentRolls,setRentRolls]=useState({});
+  const[rentRollLeases,setRentRollLeases]=useState([]);
+  const[showRentRoll,setShowRentRoll]=useState(null);
+  const[uploadingRR,setUploadingRR]=useState(null);
+
   const[editRequests,setEditRequests]=useState([]);
   const[pendingCount,setPendingCount]=useState(0);
   const[showRequests,setShowRequests]=useState(false);
@@ -362,6 +367,15 @@ export default function Portal(){
     setTimeout(()=>{ win.print(); }, 500);
   };
 
+  const loadRentRolls=async()=>{
+    const all=await apiFetch("/rent-roll");
+    if(all){
+      const map={};
+      all.forEach(r=>{ map[r.property_id]=r; });
+      setRentRolls(map);
+    }
+  };
+
   const loadEditRequests=async()=>{
     const d=await apiFetch("/edit-requests");
     if(d)setEditRequests(d);
@@ -378,7 +392,7 @@ export default function Portal(){
     if(d)setActivities(d);
   };
 
-  useEffect(()=>{load();loadEditRequests();},[]);
+  useEffect(()=>{load();loadEditRequests();loadRentRolls();},[]);
   useEffect(()=>{if(tab==="activity")loadActivities();},[tab,actFilterUser,actFilterDays]);
   useEffect(()=>{if(showProfile)setProfileForm({full_name:user?.full_name||"",email:user?.email||"",title:user?.title||""});},[showProfile]);
 
@@ -574,11 +588,48 @@ export default function Portal(){
                       {reports.filter(r=>r.property_id===p.id).length===0&&<span style={{fontSize:11,color:QB.textMuted}}>No reports yet</span>}
                     </div>
                     <PropertySummary propId={p.id}/>
-                    <div style={{fontSize:12,color:QB.blue,fontWeight:500}}>View reports →</div>
+                    {rentRolls[p.id]&&(
+                      <div style={{marginBottom:8,padding:"10px 12px",background:"#F0FDF4",borderRadius:QB.radiusMD,border:"1px solid #B7E5B0"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                          <span style={{fontSize:11,fontWeight:700,color:QB.green,textTransform:"uppercase",letterSpacing:".06em"}}>📋 Rent Roll · {fmtMonth(rentRolls[p.id].report_date)}</span>
+                          <button style={{background:"none",border:"none",fontSize:11,color:QB.blue,cursor:"pointer",padding:0}} onClick={e=>{e.stopPropagation();setShowRentRoll(p.id);}}>View →</button>
+                        </div>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:4}}>
+                          <div><div style={{fontSize:10,color:QB.textMuted}}>Active Leases</div><div style={{fontSize:12,fontWeight:600,color:QB.textPrimary}}>{rentRolls[p.id].active_leases}</div></div>
+                          <div><div style={{fontSize:10,color:QB.textMuted}}>Total GLA</div><div style={{fontSize:12,fontWeight:600,color:QB.textPrimary}}>{fmtShort(rentRolls[p.id].total_gla)} m²</div></div>
+                          <div><div style={{fontSize:10,color:QB.textMuted}}>Ann. Rent</div><div style={{fontSize:12,fontWeight:600,color:QB.green}}>EGP {fmtShort(rentRolls[p.id].annualized_rent)}</div></div>
+                        </div>
+                        <div style={{marginTop:6,display:"flex",gap:4,flexWrap:"wrap"}}>
+                          <span style={{padding:"1px 7px",borderRadius:10,fontSize:10,background:"#FEF2F2",color:"#C80C0F",fontWeight:600}}>🔴 {rentRolls[p.id].expiry_0_1yr} exp &lt;1yr</span>
+                          <span style={{padding:"1px 7px",borderRadius:10,fontSize:10,background:"#FFFBEB",color:"#B45309",fontWeight:600}}>🟡 {rentRolls[p.id].expiry_1_2yr} exp 1-2yr</span>
+                          <span style={{padding:"1px 7px",borderRadius:10,fontSize:10,background:"#F2FBF0",color:"#2CA01C",fontWeight:600}}>🟢 {rentRolls[p.id].expiry_3plus} exp &gt;3yr</span>
+                        </div>
+                      </div>
+                    )}
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                      <div style={{fontSize:12,color:QB.blue,fontWeight:500}}>View reports →</div>
+                    </div>
                   </div>
                   {isAdmin&&<>
                     <div style={s.divider}/>
-                    <div style={{display:"flex",gap:8}}>
+                    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                      {isEditor&&<label style={{...s.btnS,padding:"4px 12px",fontSize:12,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4}}>
+                        📥 Rent Roll
+                        <input type="file" accept=".xlsx" style={{display:"none"}} onChange={async e=>{
+                          const file=e.target.files[0]; if(!file)return;
+                          setUploadingRR(p.id);
+                          const fd=new FormData(); fd.append("file",file); fd.append("property_id",p.id);
+                          try{
+                            const token=localStorage.getItem("ca_token");
+                            const API=import.meta.env.VITE_API_URL||"http://localhost:8001";
+                            const res=await fetch(`${API}/rent-roll/upload`,{method:"POST",headers:{Authorization:`Bearer ${token}`},body:fd});
+                            if(!res.ok)throw new Error(await res.text());
+                            await loadRentRolls(); flash(`Rent Roll uploaded — ${file.name}`);
+                          }catch(err){flash(err.message||"Upload failed","error");}
+                          finally{setUploadingRR(null); e.target.value="";}
+                        }}/>
+                        {uploadingRR===p.id&&" ⏳"}
+                      </label>}
                       <button style={{...s.btnS,padding:"4px 12px",fontSize:12}} onClick={()=>{setEditProp(p);setEditPropForm({name:p.name,location:p.location||"",system:p.system||"",logo_url:p.logo_url||"",landlord_name:p.landlord_name||""});}}>Edit</button>
                       <button style={{...s.btnS,padding:"4px 12px",fontSize:12,color:QB.amber,borderColor:QB.amberBorder}} onClick={async()=>{if(!confirm(`Archive "${p.name}"?`))return;await apiFetch(`/properties/${p.id}`,{method:"PATCH",body:JSON.stringify({is_active:false})});load();flash("Archived");}}>Archive</button>
                       <button style={{...s.btnS,padding:"4px 12px",fontSize:12,color:QB.red,borderColor:QB.redBorder}} onClick={async()=>{if(!confirm(`Delete "${p.name}" permanently?`))return;await apiFetch(`/properties/${p.id}`,{method:"DELETE"});load();flash("Deleted");}}>Delete</button>
@@ -1795,6 +1846,70 @@ export default function Portal(){
             </div>
           </div>
         </div>}
+
+        {/* Rent Roll Detail Modal */}
+        {showRentRoll&&(()=>{
+          const rr=rentRolls[showRentRoll];
+          if(!rr)return null;
+          const prop=properties.find(p=>p.id===showRentRoll);
+          return(
+            <div style={s.overlay} onClick={()=>setShowRentRoll(null)}>
+              <div style={{...s.modal,width:700,maxWidth:"95vw"}} onClick={e=>e.stopPropagation()}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+                  <div>
+                    <div style={s.modalTitle}>📋 Rent Roll — {prop?.name}</div>
+                    <div style={{fontSize:12,color:QB.textMuted,marginTop:-14}}>{fmtMonth(rr.report_date)}</div>
+                  </div>
+                  <button onClick={()=>setShowRentRoll(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:QB.textMuted}}>✕</button>
+                </div>
+
+                {/* KPI row */}
+                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:20}}>
+                  {[
+                    {label:"Active Leases",value:rr.active_leases,color:QB.textPrimary},
+                    {label:"Unique Tenants",value:rr.unique_tenants,color:QB.textPrimary},
+                    {label:"Total GLA",value:`${fmtShort(rr.total_gla)} m²`,color:QB.textPrimary},
+                    {label:"Ann. Rent",value:`EGP ${fmtShort(rr.annualized_rent)}`,color:QB.green},
+                  ].map(({label,value,color})=>(
+                    <div key={label} style={{textAlign:"center",padding:"12px 8px",background:QB.bgSidebar,borderRadius:QB.radiusMD,border:`1px solid ${QB.borderLight}`}}>
+                      <div style={{fontSize:10,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em",marginBottom:4}}>{label}</div>
+                      <div style={{fontSize:16,fontWeight:700,color}}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Expiry breakdown */}
+                <div style={{marginBottom:20}}>
+                  <div style={{fontSize:12,fontWeight:600,color:QB.textSecondary,marginBottom:8}}>Lease Expiry Breakdown</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+                    {[
+                      {label:"< 1 year",val:rr.expiry_0_1yr,bg:"#FEF2F2",color:"#C80C0F"},
+                      {label:"1–2 years",val:rr.expiry_1_2yr,bg:"#FFFBEB",color:"#B45309"},
+                      {label:"2–3 years",val:rr.expiry_2_3yr,bg:"#EFF6FF",color:"#0077C5"},
+                      {label:"> 3 years",val:rr.expiry_3plus,bg:"#F2FBF0",color:"#2CA01C"},
+                    ].map(({label,val,bg,color})=>{
+                      const pct=rr.active_leases>0?Math.round(val/rr.active_leases*100):0;
+                      return(
+                        <div key={label} style={{padding:"10px 12px",background:bg,borderRadius:QB.radiusMD,textAlign:"center"}}>
+                          <div style={{fontSize:22,fontWeight:700,color}}>{val}</div>
+                          <div style={{fontSize:11,color,marginTop:2}}>{label}</div>
+                          <div style={{fontSize:10,color:QB.textMuted}}>{pct}% of portfolio</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Monthly figures */}
+                <div style={{padding:"12px 16px",background:QB.bgSidebar,borderRadius:QB.radiusMD,border:`1px solid ${QB.borderLight}`,display:"flex",gap:24}}>
+                  <div><div style={{fontSize:10,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em"}}>Monthly Rent</div><div style={{fontSize:15,fontWeight:700,color:QB.green}}>EGP {fmtShort(rr.monthly_rent)}</div></div>
+                  <div><div style={{fontSize:10,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em"}}>Monthly SC</div><div style={{fontSize:15,fontWeight:700,color:QB.blue}}>EGP {fmtShort(rr.monthly_sc)}</div></div>
+                  <div><div style={{fontSize:10,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em"}}>Total Monthly</div><div style={{fontSize:15,fontWeight:700,color:QB.textPrimary}}>EGP {fmtShort(rr.monthly_rent+rr.monthly_sc)}</div></div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Edit Report Modal */}
         {editReport&&<div style={s.overlay}>
