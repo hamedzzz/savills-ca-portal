@@ -625,7 +625,7 @@ export default function Portal(){
           ))}
           {isAdmin&&(
             <div style={{position:"relative",marginLeft:"auto"}}>
-              <button onClick={()=>setAdminMenuOpen(v=>!v)}
+              <button onClick={e=>{e.stopPropagation();setAdminMenuOpen(v=>!v);}}
                 style={{...s.tab(adminDropdownTabs.includes(tab)),display:"flex",alignItems:"center",gap:5}}>
                 {adminDropdownTabs.includes(tab)?tabLabels[tab]:"Admin"}
                 {pendingCount>0&&!adminDropdownTabs.includes(tab)&&<span style={{background:QB.red,color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px"}}>{pendingCount}</span>}
