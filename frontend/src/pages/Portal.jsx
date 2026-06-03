@@ -146,6 +146,15 @@ export default function Portal(){
   const[reviewModal,setReviewModal]=useState(null);
   const[reviewNote,setReviewNote]=useState("");
 
+  // Rent Roll tab filters
+  const[rrTabProp,setRrTabProp]=useState("");
+  const[rrTabSub,setRrTabSub]=useState("");
+  const[rrTabType,setRrTabType]=useState("");
+  const[rrTabExpiry,setRrTabExpiry]=useState("");
+  const[rrTabSearch,setRrTabSearch]=useState("");
+  const[rrTabLeases,setRrTabLeases]=useState([]);
+  const[rrTabLoading,setRrTabLoading]=useState(false);
+
   const[showProfile,setShowProfile]=useState(false);
   const[profileForm,setProfileForm]=useState({full_name:"",email:"",title:""});
   const[pwForm,setPwForm]=useState({current_password:"",new_password:"",confirm:""});
@@ -396,6 +405,17 @@ export default function Portal(){
     }
   };
 
+  const loadRentRollTab=async(propId)=>{
+    if(!propId){setRrTabLeases([]);return;}
+    setRrTabLoading(true);
+    const d=await apiFetch(`/rent-roll/${propId}/leases`);
+    if(d){
+      setRentRollLeases(prev=>({...prev,[propId]:d}));
+      setRrTabLeases(d);
+    }
+    setRrTabLoading(false);
+  };
+
   const loadActivities=async()=>{
     let url=`/activity-logs?days=${actFilterDays}`;
     if(actFilterUser)url+=`&user_id=${actFilterUser}`;
@@ -412,15 +432,16 @@ export default function Portal(){
   const reportTypes=["Collection","Aging","Budget vs Actual","Invoice Reconciliation","Income Statement","Other"];
 
   const tabs=isAdmin
-    ?["properties","reports","collection","email","manage-reports","users","requests","activity","settings"]
+    ?["properties","reports","collection","rent-roll","email","manage-reports","users","requests","activity","settings"]
     :isEditor
-    ?["properties","reports","collection","email"]
-    :["properties","reports","collection"];
+    ?["properties","reports","collection","rent-roll","email"]
+    :["properties","reports","collection","rent-roll"];
 
   const tabLabels={
     properties:"Properties",
     reports:"Reports",
     collection:"Collection",
+    "rent-roll":"Rent Roll",
     email:"Email",
     "manage-reports":"Manage Reports",
     users:"Users",
@@ -1505,6 +1526,167 @@ export default function Portal(){
               })
           }
         </div>}
+
+        {/* ══════════════════════════════════════════════════════════════════
+            RENT ROLL TAB
+        ══════════════════════════════════════════════════════════════════ */}
+        {tab==="rent-roll"&&(()=>{
+          // Collect all sub_locations for selected property
+          const propRRs = rrTabProp ? (rentRolls[parseInt(rrTabProp)]||[]) : [];
+          const subLocations = [...new Set(propRRs.map(r=>r.sub_location).filter(Boolean))];
+
+          // Filter leases
+          const unitTypes = [...new Set(rrTabLeases.map(l=>l.unit_type).filter(Boolean))].sort();
+          const filtered = rrTabLeases.filter(l=>{
+            if(rrTabSub && l.sub_location!==rrTabSub) return false;
+            if(rrTabType && l.unit_type!==rrTabType) return false;
+            if(rrTabSearch){
+              const q=rrTabSearch.toLowerCase();
+              if(!l.tenant_brand?.toLowerCase().includes(q)&&!l.unit_code?.toLowerCase().includes(q)) return false;
+            }
+            if(rrTabExpiry){
+              const y=parseFloat(l.remaining_years)||0;
+              if(rrTabExpiry==="0-1"&&!(y<=1)) return false;
+              if(rrTabExpiry==="1-2"&&!(y>1&&y<=2)) return false;
+              if(rrTabExpiry==="2-3"&&!(y>2&&y<=3)) return false;
+              if(rrTabExpiry==="3+"&&!(y>3)) return false;
+            }
+            return true;
+          });
+
+          // Summary KPIs from filtered
+          const totalGLA = filtered.reduce((a,l)=>a+(parseFloat(l.gla)||0),0);
+          const totalRent = filtered.reduce((a,l)=>a+(parseFloat(l.annualized_rent)||0),0);
+          const exp1yr = filtered.filter(l=>(parseFloat(l.remaining_years)||0)<=1).length;
+
+          return(
+            <div>
+              {/* Filters */}
+              <div style={{...s.card,marginBottom:16}}>
+                <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
+                  <div>
+                    <label style={s.label}>Property</label>
+                    <select style={{...s.input,width:160}} value={rrTabProp} onChange={e=>{
+                      setRrTabProp(e.target.value);setRrTabSub("");setRrTabType("");setRrTabExpiry("");setRrTabSearch("");
+                      if(e.target.value)loadRentRollTab(parseInt(e.target.value));
+                      else setRrTabLeases([]);
+                    }}>
+                      <option value="">Select property</option>
+                      {Object.keys(rentRolls).map(pid=>{
+                        const prop=properties.find(p=>p.id===parseInt(pid));
+                        return prop?<option key={pid} value={pid}>{prop.name}</option>:null;
+                      })}
+                    </select>
+                  </div>
+                  {subLocations.length>1&&<div>
+                    <label style={s.label}>Sub-location</label>
+                    <select style={{...s.input,width:140}} value={rrTabSub} onChange={e=>setRrTabSub(e.target.value)}>
+                      <option value="">All</option>
+                      {subLocations.map(s=><option key={s}>{s}</option>)}
+                    </select>
+                  </div>}
+                  {unitTypes.length>0&&<div>
+                    <label style={s.label}>Unit Type</label>
+                    <select style={{...s.input,width:140}} value={rrTabType} onChange={e=>setRrTabType(e.target.value)}>
+                      <option value="">All types</option>
+                      {unitTypes.map(t=><option key={t}>{t}</option>)}
+                    </select>
+                  </div>}
+                  <div>
+                    <label style={s.label}>Expiry</label>
+                    <select style={{...s.input,width:130}} value={rrTabExpiry} onChange={e=>setRrTabExpiry(e.target.value)}>
+                      <option value="">All</option>
+                      <option value="0-1">{"< 1 year"}</option>
+                      <option value="1-2">1–2 years</option>
+                      <option value="2-3">2–3 years</option>
+                      <option value="3+">{">"} 3 years</option>
+                    </select>
+                  </div>
+                  <div style={{flex:1,minWidth:160}}>
+                    <label style={s.label}>Search tenant / unit</label>
+                    <input style={s.input} placeholder="Search..." value={rrTabSearch} onChange={e=>setRrTabSearch(e.target.value)}/>
+                  </div>
+                  {(rrTabSub||rrTabType||rrTabExpiry||rrTabSearch)&&
+                    <button style={{...s.btnS,padding:"8px 12px",fontSize:12}} onClick={()=>{setRrTabSub("");setRrTabType("");setRrTabExpiry("");setRrTabSearch("");}}>✕ Clear</button>
+                  }
+                </div>
+              </div>
+
+              {!rrTabProp?(
+                <div style={{...s.card,textAlign:"center",padding:"60px 20px"}}>
+                  <div style={{fontSize:32,marginBottom:12}}>📋</div>
+                  <div style={{fontSize:14,fontWeight:600,color:QB.textPrimary,marginBottom:6}}>Select a property</div>
+                  <div style={{fontSize:13,color:QB.textMuted}}>Choose a property to view its rent roll</div>
+                </div>
+              ):rrTabLoading?(
+                <div style={{...s.card,textAlign:"center",padding:"40px"}}><div style={{color:QB.textMuted}}>Loading leases...</div></div>
+              ):(
+                <>
+                  {/* KPI summary */}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+                    {[
+                      {label:"Filtered Leases",value:filtered.length,color:QB.textPrimary},
+                      {label:"Total GLA",value:`${fmtShort(totalGLA)} m²`,color:QB.textPrimary},
+                      {label:"Ann. Rent",value:`EGP ${fmtShort(totalRent)}`,color:QB.green},
+                      {label:"Expiring < 1yr",value:exp1yr,color:exp1yr>0?"#C80C0F":QB.green},
+                    ].map(({label,value,color})=>(
+                      <div key={label} style={{...s.card,marginBottom:0,textAlign:"center",padding:"14px 16px"}}>
+                        <div style={{fontSize:10,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em",marginBottom:4}}>{label}</div>
+                        <div style={{fontSize:18,fontWeight:700,color}}>{value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Leases table */}
+                  <div style={s.card}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                      <div style={s.cardTitle}>Lease Register — {filtered.length} records</div>
+                    </div>
+                    {filtered.length===0?<div style={{textAlign:"center",padding:"30px",color:QB.textMuted,fontSize:13}}>No leases match your filters</div>:(
+                      <div style={{overflowX:"auto",maxHeight:520,overflowY:"auto"}}>
+                        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                          <thead style={{position:"sticky",top:0,zIndex:5}}>
+                            <tr style={{background:QB.bgSidebar}}>
+                              {["Tenant","Unit","Floor","Type","GLA m²","Ann. Rent","Rent/m²","SC/m²","Lease Start","Lease End","Rem. Yrs","Escalation"].map(h=>(
+                                <th key={h} style={{padding:"9px 10px",textAlign:"left",fontSize:10,color:QB.textMuted,fontWeight:600,textTransform:"uppercase",letterSpacing:".06em",borderBottom:`2px solid ${QB.borderCard}`,whiteSpace:"nowrap"}}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filtered.map((l,i)=>{
+                              const remYr=parseFloat(l.remaining_years)||0;
+                              const remColor=remYr<=1?"#C80C0F":remYr<=2?"#B45309":QB.green;
+                              const remBg=remYr<=1?"#FEF2F2":remYr<=2?"#FFFBEB":"transparent";
+                              const fmtDate=d=>d?new Date(d).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—";
+                              return(
+                                <tr key={l.id||i} style={{background:i%2===0?QB.bgCard:QB.bgSidebar,borderBottom:`1px solid ${QB.borderLight}`}}>
+                                  <td style={{padding:"8px 10px",fontWeight:600,color:QB.textPrimary,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={l.tenant_brand}>{l.tenant_brand||"—"}</td>
+                                  <td style={{padding:"8px 10px",color:QB.textSecondary,whiteSpace:"nowrap"}}>{l.unit_code||"—"}</td>
+                                  <td style={{padding:"8px 10px",color:QB.textMuted}}>{l.floor||"—"}</td>
+                                  <td style={{padding:"8px 10px"}}><span style={{padding:"2px 7px",borderRadius:10,fontSize:10,background:QB.blueLight,color:QB.blue,border:`1px solid ${QB.blue}22`,whiteSpace:"nowrap"}}>{l.unit_type||"—"}</span></td>
+                                  <td style={{padding:"8px 10px",textAlign:"right",color:QB.textSecondary}}>{fmtShort(l.gla)}</td>
+                                  <td style={{padding:"8px 10px",textAlign:"right",fontWeight:600,color:QB.green,whiteSpace:"nowrap"}}>EGP {fmtShort(l.annualized_rent)}</td>
+                                  <td style={{padding:"8px 10px",textAlign:"right",color:QB.textSecondary,whiteSpace:"nowrap"}}>{l.rent_per_sqm?`EGP ${fmtShort(l.rent_per_sqm)}`:"—"}</td>
+                                  <td style={{padding:"8px 10px",textAlign:"right",color:QB.textSecondary,whiteSpace:"nowrap"}}>{l.sc_per_sqm?`EGP ${fmtShort(l.sc_per_sqm)}`:"—"}</td>
+                                  <td style={{padding:"8px 10px",color:QB.textMuted,whiteSpace:"nowrap"}}>{fmtDate(l.lease_start)}</td>
+                                  <td style={{padding:"8px 10px",color:QB.textSecondary,whiteSpace:"nowrap"}}>{fmtDate(l.lease_end)}</td>
+                                  <td style={{padding:"8px 10px",textAlign:"center"}}>
+                                    <span style={{padding:"3px 8px",borderRadius:10,fontSize:11,fontWeight:700,color:remColor,background:remBg,border:remBg!=="transparent"?`1px solid ${remColor}33`:"none"}}>{remYr.toFixed(1)}</span>
+                                  </td>
+                                  <td style={{padding:"8px 10px",textAlign:"right",color:QB.textSecondary}}>{l.escalation_rate?`${l.escalation_rate}%`:"—"}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ══════════════════════════════════════════════════════════════════
             SETTINGS TAB (admin only)
