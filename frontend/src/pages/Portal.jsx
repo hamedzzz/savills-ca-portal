@@ -132,8 +132,9 @@ export default function Portal(){
   const[settingsPreview,setSettingsPreview]=useState(false);
 
   const[rentRolls,setRentRolls]=useState({});
-  const[rentRollLeases,setRentRollLeases]=useState([]);
+  const[rentRollLeases,setRentRollLeases]=useState({});
   const[showRentRoll,setShowRentRoll]=useState(null);
+  const[rrDrilldown,setRrDrilldown]=useState(null);
   const[uploadingRR,setUploadingRR]=useState(null);
 
   const[editRequests,setEditRequests]=useState([]);
@@ -365,6 +366,12 @@ export default function Portal(){
     win.document.close();
     win.focus();
     setTimeout(()=>{ win.print(); }, 500);
+  };
+
+  const loadRentRollLeases=async(propertyId)=>{
+    const d=await apiFetch(`/rent-roll/${propertyId}/leases`);
+    if(d)setRentRollLeases(prev=>({...prev,[propertyId]:d}));
+    return d||[];
   };
 
   const loadRentRolls=async()=>{
@@ -1861,17 +1868,17 @@ export default function Portal(){
           const rr=showRentRoll;
           const prop=properties.find(p=>p.id===rr.property_id);
           return(
-            <div style={s.overlay} onClick={()=>setShowRentRoll(null)}>
+            <div style={s.overlay} onClick={()=>{setShowRentRoll(null);setRrDrilldown(null);}}>
               <div style={{...s.modal,width:700,maxWidth:"95vw"}} onClick={e=>e.stopPropagation()}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
                   <div>
                     <div style={s.modalTitle}>📋 Rent Roll — {prop?.name}</div>
                     <div style={{fontSize:12,color:QB.textMuted,marginTop:-14}}>{fmtMonth(rr.report_date)}</div>
                   </div>
-                  <button onClick={()=>setShowRentRoll(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:QB.textMuted}}>✕</button>
+                  <button onClick={()=>{setShowRentRoll(null);setRrDrilldown(null);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:QB.textMuted}}>✕</button>
                 </div>
 
-                {/* KPI row */}
+                {/* KPI row — clickable */}
                 <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:20}}>
                   {[
                     {label:"Active Leases",value:rr.active_leases,color:QB.textPrimary},
@@ -1879,26 +1886,41 @@ export default function Portal(){
                     {label:"Total GLA",value:`${fmtShort(rr.total_gla)} m²`,color:QB.textPrimary},
                     {label:"Ann. Rent",value:`EGP ${fmtShort(rr.annualized_rent)}`,color:QB.green},
                   ].map(({label,value,color})=>(
-                    <div key={label} style={{textAlign:"center",padding:"12px 8px",background:QB.bgSidebar,borderRadius:QB.radiusMD,border:`1px solid ${QB.borderLight}`}}>
+                    <div key={label} onClick={async()=>{
+                      const leases=rentRollLeases[rr.property_id]||await loadRentRollLeases(rr.property_id);
+                      setRrDrilldown({label:"All Active Leases",color:QB.blue,leases,subLabel:rr.sub_location});
+                    }} style={{textAlign:"center",padding:"12px 8px",background:QB.bgSidebar,borderRadius:QB.radiusMD,border:`1px solid ${QB.borderLight}`,cursor:"pointer"}}
+                    onMouseEnter={e=>e.currentTarget.style.boxShadow=`0 0 0 2px ${QB.blue}`}
+                    onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
                       <div style={{fontSize:10,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em",marginBottom:4}}>{label}</div>
                       <div style={{fontSize:16,fontWeight:700,color}}>{value}</div>
+                      <div style={{fontSize:10,color:QB.blue,marginTop:4}}>View list →</div>
                     </div>
                   ))}
                 </div>
 
-                {/* Expiry breakdown */}
+                {/* Expiry breakdown — clickable */}
                 <div style={{marginBottom:20}}>
                   <div style={{fontSize:12,fontWeight:600,color:QB.textSecondary,marginBottom:8}}>Lease Expiry Breakdown</div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
                     {[
-                      {label:"< 1 year",val:rr.expiry_0_1yr,bg:"#FEF2F2",color:"#C80C0F"},
-                      {label:"1–2 years",val:rr.expiry_1_2yr,bg:"#FFFBEB",color:"#B45309"},
-                      {label:"2–3 years",val:rr.expiry_2_3yr,bg:"#EFF6FF",color:"#0077C5"},
-                      {label:"> 3 years",val:rr.expiry_3plus,bg:"#F2FBF0",color:"#2CA01C"},
-                    ].map(({label,val,bg,color})=>{
+                      {label:"< 1 year",val:rr.expiry_0_1yr,bg:"#FEF2F2",color:"#C80C0F",minYr:0,maxYr:1},
+                      {label:"1–2 years",val:rr.expiry_1_2yr,bg:"#FFFBEB",color:"#B45309",minYr:1,maxYr:2},
+                      {label:"2–3 years",val:rr.expiry_2_3yr,bg:"#EFF6FF",color:"#0077C5",minYr:2,maxYr:3},
+                      {label:"> 3 years",val:rr.expiry_3plus,bg:"#F2FBF0",color:"#2CA01C",minYr:3,maxYr:99},
+                    ].map(({label,val,bg,color,minYr,maxYr})=>{
                       const pct=rr.active_leases>0?Math.round(val/rr.active_leases*100):0;
                       return(
-                        <div key={label} style={{padding:"10px 12px",background:bg,borderRadius:QB.radiusMD,textAlign:"center"}}>
+                        <div key={label} onClick={async()=>{
+                          const all=rentRollLeases[rr.property_id]||await loadRentRollLeases(rr.property_id);
+                          const filtered=all.filter(l=>{
+                            const y=parseFloat(l.remaining_years)||0;
+                            return y>minYr&&y<=maxYr;
+                          });
+                          setRrDrilldown({label,color,leases:filtered,subLabel:rr.sub_location});
+                        }} style={{padding:"10px 12px",background:bg,borderRadius:QB.radiusMD,textAlign:"center",cursor:"pointer",border:"2px solid transparent",transition:"border .15s"}}
+                        onMouseEnter={e=>e.currentTarget.style.border=`2px solid ${color}`}
+                        onMouseLeave={e=>e.currentTarget.style.border="2px solid transparent"}>
                           <div style={{fontSize:22,fontWeight:700,color}}>{val}</div>
                           <div style={{fontSize:11,color,marginTop:2}}>{label}</div>
                           <div style={{fontSize:10,color:QB.textMuted}}>{pct}% of portfolio</div>
@@ -1914,6 +1936,51 @@ export default function Portal(){
                   <div><div style={{fontSize:10,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em"}}>Monthly SC</div><div style={{fontSize:15,fontWeight:700,color:QB.blue}}>EGP {fmtShort(rr.monthly_sc)}</div></div>
                   <div><div style={{fontSize:10,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em"}}>Total Monthly</div><div style={{fontSize:15,fontWeight:700,color:QB.textPrimary}}>EGP {fmtShort(rr.monthly_rent+rr.monthly_sc)}</div></div>
                 </div>
+                {/* Drill-down inline table */}
+                {rrDrilldown&&(
+                  <div style={{marginTop:16,borderTop:`1px solid ${QB.borderLight}`,paddingTop:16}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                      <div>
+                        <span style={{fontSize:13,fontWeight:700,color:rrDrilldown.color}}>{rrDrilldown.label}</span>
+                        {rrDrilldown.subLabel&&<span style={{fontSize:12,color:QB.textMuted,marginLeft:8}}>· {rrDrilldown.subLabel}</span>}
+                        <span style={{fontSize:12,color:QB.textMuted,marginLeft:8}}>({rrDrilldown.leases.length} leases)</span>
+                      </div>
+                      <button onClick={()=>setRrDrilldown(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:QB.textMuted}}>✕ Close</button>
+                    </div>
+                    <div style={{overflowX:"auto",maxHeight:320,overflowY:"auto"}}>
+                      <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                        <thead style={{position:"sticky",top:0,background:QB.bgSidebar}}>
+                          <tr>
+                            {["Tenant","Unit","Type","GLA (m²)","Ann. Rent","Rent/m²","Lease End","Rem. Yrs"].map(h=>(
+                              <th key={h} style={{padding:"8px 10px",textAlign:"left",fontSize:10,color:QB.textMuted,fontWeight:600,textTransform:"uppercase",letterSpacing:".06em",borderBottom:`1px solid ${QB.borderLight}`,whiteSpace:"nowrap"}}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rrDrilldown.leases.length===0
+                            ?<tr><td colSpan={8} style={{padding:"20px",textAlign:"center",color:QB.textMuted}}>No leases in this range</td></tr>
+                            :rrDrilldown.leases.map((l,i)=>{
+                              const remYr=parseFloat(l.remaining_years)||0;
+                              const remColor=remYr<=1?"#C80C0F":remYr<=2?"#B45309":QB.textPrimary;
+                              return(
+                                <tr key={l.id||i} style={{background:i%2===0?QB.bgCard:QB.bgSidebar}}>
+                                  <td style={{padding:"7px 10px",color:QB.textPrimary,fontWeight:500,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.tenant_brand||"—"}</td>
+                                  <td style={{padding:"7px 10px",color:QB.textSecondary,whiteSpace:"nowrap"}}>{l.unit_code||"—"}</td>
+                                  <td style={{padding:"7px 10px"}}><span style={{padding:"2px 7px",borderRadius:10,fontSize:10,background:QB.bgSidebar,border:`1px solid ${QB.borderLight}`,color:QB.textSecondary}}>{l.unit_type||"—"}</span></td>
+                                  <td style={{padding:"7px 10px",textAlign:"right",color:QB.textSecondary}}>{fmtShort(l.gla)}</td>
+                                  <td style={{padding:"7px 10px",textAlign:"right",fontWeight:600,color:QB.green,whiteSpace:"nowrap"}}>EGP {fmtShort(l.annualized_rent)}</td>
+                                  <td style={{padding:"7px 10px",textAlign:"right",color:QB.textSecondary,whiteSpace:"nowrap"}}>{l.rent_per_sqm?`EGP ${fmtShort(l.rent_per_sqm)}`:"—"}</td>
+                                  <td style={{padding:"7px 10px",color:QB.textSecondary,whiteSpace:"nowrap"}}>{l.lease_end?new Date(l.lease_end).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}):"—"}</td>
+                                  <td style={{padding:"7px 10px",textAlign:"right",fontWeight:700,color:remColor,whiteSpace:"nowrap"}}>{remYr.toFixed(1)}</td>
+                                </tr>
+                              );
+                            })
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           );
