@@ -1,7 +1,6 @@
 # updated 2026-06-03
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
-...
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
 python-jose[cryptography]==3.3.0
