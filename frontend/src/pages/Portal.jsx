@@ -1749,7 +1749,9 @@ export default function Portal(){
                             l.sub_location||""
                           ]);
                           const csvContent=[headers,...rows].map(r=>r.map(v=>typeof v==="string"&&v.includes(",")?`"${v}"`:v).join(",")).join("\n");
-");
+const csvContent=[headers,...rows].map(r=>r.map(v=>typeof v==="string"&&v.includes(",")?`"${v}"`:v).join(",")).join("\n");
+const BOM="﻿";
+const blob=new Blob([BOM+csvContent],{type:"text/csv;charset=utf-8;"});
                           const BOM="﻿";
                           const blob=new Blob([BOM+csvContent],{type:"text/csv;charset=utf-8;"});
                           const url=URL.createObjectURL(blob);
