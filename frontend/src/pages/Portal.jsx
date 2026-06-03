@@ -2268,6 +2268,8 @@ export default function Portal(){
         {showRentRoll&&(()=>{
           const rr=showRentRoll;
           const prop=properties.find(p=>p.id===rr.property_id);
+          // Auto-load leases for accurate expiry counts
+          if(!rentRollLeases[rr.property_id]) loadRentRollLeases(rr.property_id);
           return(
             <div style={s.overlay} onClick={()=>{setShowRentRoll(null);setRrDrilldown(null);}}>
               <div style={{...s.modal,width:700,maxWidth:"95vw"}} onClick={e=>e.stopPropagation()}>
@@ -2301,17 +2303,24 @@ export default function Portal(){
                   ))}
                 </div>
 
-                {/* Expiry breakdown — clickable */}
+                {/* Expiry breakdown — clickable, recalculated from lease_end */}
                 <div style={{marginBottom:20}}>
                   <div style={{fontSize:12,fontWeight:600,color:QB.textSecondary,marginBottom:8}}>Lease Expiry Breakdown</div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
-                    {[
-                      {label:"< 1 year",val:rr.expiry_0_1yr,bg:"#FEF2F2",color:"#C80C0F",minYr:0,maxYr:1},
-                      {label:"1–2 years",val:rr.expiry_1_2yr,bg:"#FFFBEB",color:"#B45309",minYr:1,maxYr:2},
-                      {label:"2–3 years",val:rr.expiry_2_3yr,bg:"#EFF6FF",color:"#0077C5",minYr:2,maxYr:3},
-                      {label:"> 3 years",val:rr.expiry_3plus,bg:"#F2FBF0",color:"#2CA01C",minYr:3,maxYr:99},
-                    ].map(({label,val,bg,color,minYr,maxYr})=>{
-                      const pct=rr.active_leases>0?Math.round(val/rr.active_leases*100):0;
+                    {(()=>{
+                      const cached=rentRollLeases[rr.property_id];
+                      const subL=cached?(rr.sub_location?cached.filter(l=>(l.sub_location||"")===(rr.sub_location||"")):cached):null;
+                      const now2=new Date();
+                      const calcN=(mn,mx)=>subL?subL.filter(l=>{if(!l.lease_end)return false;const d=(new Date(l.lease_end)-now2)/(1000*60*60*24*365.25);return d>mn&&d<=mx;}).length:null;
+                      return[
+                        {label:"< 1 year",val:calcN(0,1)??rr.expiry_0_1yr,bg:"#FEF2F2",color:"#C80C0F",minYr:0,maxYr:1},
+                        {label:"1–2 years",val:calcN(1,2)??rr.expiry_1_2yr,bg:"#FFFBEB",color:"#B45309",minYr:1,maxYr:2},
+                        {label:"2–3 years",val:calcN(2,3)??rr.expiry_2_3yr,bg:"#EFF6FF",color:"#0077C5",minYr:2,maxYr:3},
+                        {label:"> 3 years",val:calcN(3,99)??rr.expiry_3plus,bg:"#F2FBF0",color:"#2CA01C",minYr:3,maxYr:99},
+                      ];
+                    })().map(({label,val,bg,color,minYr,maxYr})=>{
+                      const total=rr.active_leases||1;
+                      const pct=Math.round(val/total*100);
                       return(
                         <div key={label} onClick={async()=>{
                           const all=rentRollLeases[rr.property_id]||await loadRentRollLeases(rr.property_id);
