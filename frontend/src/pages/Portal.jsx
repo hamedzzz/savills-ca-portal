@@ -160,6 +160,9 @@ export default function Portal(){
   const[rrTabMonthly,setRrTabMonthly]=useState([]);
   const[rrTabMonths,setRrTabMonths]=useState([]);
   const[rrMonthlyLoading,setRrMonthlyLoading]=useState(false);
+  const[rrTabTypes,setRrTabTypes]=useState([]); // multi-select unit types
+  const[rrTypeMenuOpen,setRrTypeMenuOpen]=useState(false);
+  const[rrSort,setRrSort]=useState({col:"",dir:"asc"});
 
   const[adminMenuOpen,setAdminMenuOpen]=useState(false);
   const[unitDetail,setUnitDetail]=useState(null);
@@ -518,11 +521,11 @@ export default function Portal(){
 
   // Close admin menu on outside click
   useEffect(()=>{
-    if(!adminMenuOpen) return;
-    const handler=()=>setAdminMenuOpen(false);
+    if(!adminMenuOpen&&!rrTypeMenuOpen) return;
+    const handler=()=>{setAdminMenuOpen(false);setRrTypeMenuOpen(false);};
     document.addEventListener("click",handler);
     return()=>document.removeEventListener("click",handler);
-  },[adminMenuOpen]);
+  },[adminMenuOpen,rrTypeMenuOpen]);
 
   const Flash=()=>msg?<div style={{position:"fixed",top:20,right:20,zIndex:9999,padding:"12px 18px",borderRadius:QB.radiusLG,background:msg.type==="error"?QB.redBg:QB.greenBg,color:msg.type==="error"?QB.red:QB.green,border:`1px solid ${msg.type==="error"?QB.redBorder:QB.greenBorder}`,fontSize:13,fontWeight:500,boxShadow:QB.shadowCard}}>{msg.text}</div>:null;
   const Empty=({text})=><div style={{textAlign:"center",padding:"40px 20px",color:QB.textMuted,fontSize:13}}>{text}</div>;
@@ -1591,7 +1594,7 @@ export default function Portal(){
           const unitTypes = [...new Set(rrTabLeases.map(l=>l.unit_type).filter(Boolean))].sort();
           const filtered = rrTabLeases.filter(l=>{
             if(rrTabSub && (l.sub_location||"")!==rrTabSub) return false;
-            if(rrTabType && l.unit_type!==rrTabType) return false;
+            if(rrTabTypes.length>0 && !rrTabTypes.includes(l.unit_type||"")) return false;
             if(rrTabSearch){
               const q=rrTabSearch.toLowerCase();
               if(!l.tenant_brand?.toLowerCase().includes(q)&&!l.unit_code?.toLowerCase().includes(q)) return false;
@@ -1620,6 +1623,28 @@ export default function Portal(){
             const diffYrs=(new Date(l.lease_end)-now)/(1000*60*60*24*365.25);
             return diffYrs<=1;
           }).length;
+
+          // Sort filtered results
+          const sortedFiltered = [...filtered].sort((a,b)=>{
+            if(!rrSort.col) return 0;
+            let va,vb;
+            if(rrSort.col==="tenant") { va=a.tenant_brand||""; vb=b.tenant_brand||""; }
+            else if(rrSort.col==="unit") { va=a.unit_code||""; vb=b.unit_code||""; }
+            else if(rrSort.col==="gla") { va=parseFloat(a.gla)||0; vb=parseFloat(b.gla)||0; }
+            else if(rrSort.col==="rent") { va=parseFloat(a.annualized_rent)||0; vb=parseFloat(b.annualized_rent)||0; }
+            else if(rrSort.col==="monthly_rent") {
+              const ma=rrTabMonthly.find(m=>m.lease_id===a.id);
+              const mb=rrTabMonthly.find(m=>m.lease_id===b.id);
+              va=ma?parseFloat(ma.rent)||0:0; vb=mb?parseFloat(mb.rent)||0:0;
+            }
+            else if(rrSort.col==="lease_end") { va=a.lease_end||""; vb=b.lease_end||""; }
+            else if(rrSort.col==="rem_yrs") { va=parseFloat(a.remaining_years)||0; vb=parseFloat(b.remaining_years)||0; }
+            else if(rrSort.col==="escalation") { va=parseFloat(a.escalation_rate)||0; vb=parseFloat(b.escalation_rate)||0; }
+            else return 0;
+            if(va<vb) return rrSort.dir==="asc"?-1:1;
+            if(va>vb) return rrSort.dir==="asc"?1:-1;
+            return 0;
+          });
 
           // Monthly totals if month selected
           const filteredIds = new Set(filtered.map(l=>l.id));
@@ -1653,12 +1678,27 @@ export default function Portal(){
                       {subLocations.map(s=><option key={s}>{s}</option>)}
                     </select>
                   </div>}
-                  {unitTypes.length>0&&<div>
+                  {unitTypes.length>0&&<div style={{position:"relative"}}>
                     <label style={s.label}>Unit Type</label>
-                    <select style={{...s.input,width:140}} value={rrTabType} onChange={e=>setRrTabType(e.target.value)}>
-                      <option value="">All types</option>
-                      {unitTypes.map(t=><option key={t}>{t}</option>)}
-                    </select>
+                    <button onClick={e=>{e.stopPropagation();setRrTypeMenuOpen(v=>!v);}}
+                      style={{...s.input,width:160,textAlign:"left",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                      <span>{rrTabTypes.length===0?"All types":`${rrTabTypes.length} selected`}</span>
+                      <span style={{fontSize:10,opacity:0.5}}>{rrTypeMenuOpen?"▲":"▼"}</span>
+                    </button>
+                    {rrTypeMenuOpen&&<div style={{position:"absolute",top:"100%",left:0,background:QB.bgCard,border:`1px solid ${QB.borderCard}`,borderRadius:QB.radiusLG,boxShadow:QB.shadowModal,zIndex:100,minWidth:180,maxHeight:240,overflowY:"auto",padding:"6px 0"}}>
+                      <button onClick={()=>setRrTabTypes([])} style={{display:"block",width:"100%",padding:"7px 14px",textAlign:"left",border:"none",background:rrTabTypes.length===0?QB.blueLight:"transparent",color:rrTabTypes.length===0?QB.blue:QB.textPrimary,cursor:"pointer",fontSize:12,fontFamily:QB.fontFamily}}>
+                        ✓ All types
+                      </button>
+                      {unitTypes.map(t=>(
+                        <button key={t} onClick={()=>setRrTabTypes(prev=>prev.includes(t)?prev.filter(x=>x!==t):[...prev,t])}
+                          style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 14px",textAlign:"left",border:"none",background:rrTabTypes.includes(t)?QB.blueLight:"transparent",color:rrTabTypes.includes(t)?QB.blue:QB.textPrimary,cursor:"pointer",fontSize:12,fontFamily:QB.fontFamily}}>
+                          <span style={{width:14,height:14,border:`2px solid ${rrTabTypes.includes(t)?QB.blue:QB.borderInput}`,borderRadius:3,background:rrTabTypes.includes(t)?QB.blue:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                            {rrTabTypes.includes(t)&&<span style={{color:"#fff",fontSize:9,fontWeight:700}}>✓</span>}
+                          </span>
+                          {t}
+                        </button>
+                      ))}
+                    </div>}
                   </div>}
                   <div>
                     <label style={s.label}>Expiry</label>
@@ -1692,8 +1732,8 @@ export default function Portal(){
                     <label style={s.label}>Lease end to</label>
                     <input type="date" style={{...s.input,width:140}} value={rrTabDateTo} onChange={e=>setRrTabDateTo(e.target.value)}/>
                   </div>
-                  {(rrTabSub||rrTabType||rrTabExpiry||rrTabSearch||rrTabDateFrom||rrTabDateTo)&&
-                    <button style={{...s.btnS,padding:"8px 12px",fontSize:12}} onClick={()=>{setRrTabSub("");setRrTabType("");setRrTabExpiry("");setRrTabSearch("");setRrTabDateFrom("");setRrTabDateTo("");}}>✕ Clear</button>
+                  {(rrTabSub||rrTabTypes.length>0||rrTabExpiry||rrTabSearch||rrTabDateFrom||rrTabDateTo)&&
+                    <button style={{...s.btnS,padding:"8px 12px",fontSize:12}} onClick={()=>{setRrTabSub("");setRrTabTypes([]);setRrTabExpiry("");setRrTabSearch("");setRrTabDateFrom("");setRrTabDateTo("");}}>✕ Clear</button>
                   }
                 </div>
               </div>
@@ -1802,21 +1842,28 @@ export default function Portal(){
                         }}>📄 Export PDF</button>
                       </div>
                     </div>
-                    {filtered.length===0?<div style={{textAlign:"center",padding:"30px",color:QB.textMuted,fontSize:13}}>No leases match your filters</div>:(
+                    {sortedFiltered.length===0?<div style={{textAlign:"center",padding:"30px",color:QB.textMuted,fontSize:13}}>No leases match your filters</div>:(
                       <div style={{overflowX:"auto",maxHeight:520,overflowY:"auto"}}>
                         <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                           <thead style={{position:"sticky",top:0,zIndex:5}}>
                             <tr style={{background:QB.bgSidebar}}>
-                              {[...["Tenant","Unit","Floor","Type","GLA m²"],
-                               ...(rrTabMonth?["Monthly Rent","Monthly SC"]:["Ann. Rent","Rent/m²"]),
-                               ...["Lease Start","Lease End","Rem. Yrs","Escalation"]
-                             ].map(h=>(
-                                <th key={h} style={{padding:"9px 10px",textAlign:"left",fontSize:10,color:QB.textMuted,fontWeight:600,textTransform:"uppercase",letterSpacing:".06em",borderBottom:`2px solid ${QB.borderCard}`,whiteSpace:"nowrap"}}>{h}</th>
+                              {[
+                                {label:"Tenant",col:"tenant"},{label:"Unit",col:"unit"},
+                                {label:"Floor",col:""},{label:"Type",col:""},
+                                {label:"GLA m²",col:"gla"},
+                                ...(rrTabMonth?[{label:"Monthly Rent",col:"monthly_rent"},{label:"Monthly SC",col:""}]:[{label:"Ann. Rent",col:"rent"},{label:"Rent/m²",col:""}]),
+                                {label:"Lease Start",col:""},{label:"Lease End",col:"lease_end"},
+                                {label:"Rem. Yrs",col:"rem_yrs"},{label:"Escalation",col:"escalation"},
+                              ].map(({label,col})=>(
+                                <th key={label} onClick={col?()=>setRrSort(prev=>({col,dir:prev.col===col&&prev.dir==="asc"?"desc":"asc"})):undefined}
+                                  style={{padding:"9px 10px",textAlign:"left",fontSize:10,color:col?QB.blue:QB.textMuted,fontWeight:600,textTransform:"uppercase",letterSpacing:".06em",borderBottom:`2px solid ${QB.borderCard}`,whiteSpace:"nowrap",cursor:col?"pointer":"default",userSelect:"none"}}>
+                                  {label}{col&&rrSort.col===col?(rrSort.dir==="asc"?" ↑":" ↓"):""}
+                                </th>
                               ))}
                             </tr>
                           </thead>
                           <tbody>
-                            {filtered.map((l,i)=>{
+                            {sortedFiltered.map((l,i)=>{
                               const remYr=parseFloat(l.remaining_years)||0;
                               const remColor=remYr<=1?"#C80C0F":remYr<=2?"#B45309":QB.green;
                               const remBg=remYr<=1?"#FEF2F2":remYr<=2?"#FFFBEB":"transparent";
