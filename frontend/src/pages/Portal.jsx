@@ -1808,7 +1808,7 @@ export default function Portal(){
                           <thead style={{position:"sticky",top:0,zIndex:5}}>
                             <tr style={{background:QB.bgSidebar}}>
                               {[...["Tenant","Unit","Floor","Type","GLA m²"],
-                               ...(rrTabMonth?["Monthly Rent","Monthly SC"]:["Ann. Rent","Rent/m²","SC/m²"]),
+                               ...(rrTabMonth?["Monthly Rent","Monthly SC"]:["Ann. Rent","Rent/m²"]),
                                ...["Lease Start","Lease End","Rem. Yrs","Escalation"]
                              ].map(h=>(
                                 <th key={h} style={{padding:"9px 10px",textAlign:"left",fontSize:10,color:QB.textMuted,fontWeight:600,textTransform:"uppercase",letterSpacing:".06em",borderBottom:`2px solid ${QB.borderCard}`,whiteSpace:"nowrap"}}>{h}</th>
@@ -1840,7 +1840,6 @@ export default function Portal(){
                                     <td style={{padding:"8px 10px",textAlign:"right",fontWeight:600,color:QB.green,whiteSpace:"nowrap"}}>EGP {fmtShort(l.annualized_rent)}</td>
                                     <td style={{padding:"8px 10px",textAlign:"right",color:QB.textSecondary,whiteSpace:"nowrap"}}>{l.rent_per_sqm?`EGP ${fmtShort(l.rent_per_sqm)}`:"—"}</td>
                                   </>))()}
-                                  <td style={{padding:"8px 10px",textAlign:"right",color:QB.textSecondary,whiteSpace:"nowrap"}}>{l.sc_per_sqm?`EGP ${fmtShort(l.sc_per_sqm)}`:"—"}</td>
                                   <td style={{padding:"8px 10px",color:QB.textMuted,whiteSpace:"nowrap"}}>{fmtDate(l.lease_start)}</td>
                                   <td style={{padding:"8px 10px",color:QB.textSecondary,whiteSpace:"nowrap"}}>{fmtDate(l.lease_end)}</td>
                                   <td style={{padding:"8px 10px",textAlign:"center"}}>
