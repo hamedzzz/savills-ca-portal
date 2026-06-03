@@ -2,9 +2,22 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir \
+    fastapi==0.111.0 \
+    "uvicorn[standard]==0.29.0" \
+    "python-jose[cryptography]==3.3.0" \
+    "passlib[bcrypt]==1.7.4" \
+    bcrypt==4.0.1 \
+    python-multipart==0.0.9 \
+    pydantic==2.7.1 \
+    psycopg2-binary==2.9.9 \
+    httpx==0.27.0 \
+    pandas==2.2.2 \
+    openpyxl==3.1.2 \
+    numpy==1.26.4
 
 COPY . .
+
+EXPOSE 8080
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
