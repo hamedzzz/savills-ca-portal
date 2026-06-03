@@ -156,6 +156,10 @@ export default function Portal(){
   const[rrTabDateTo,setRrTabDateTo]=useState("");
   const[rrTabLeases,setRrTabLeases]=useState([]);
   const[rrTabLoading,setRrTabLoading]=useState(false);
+  const[rrTabMonth,setRrTabMonth]=useState("");
+  const[rrTabMonthly,setRrTabMonthly]=useState([]);
+  const[rrTabMonths,setRrTabMonths]=useState([]);
+  const[rrMonthlyLoading,setRrMonthlyLoading]=useState(false);
 
   const[showProfile,setShowProfile]=useState(false);
   const[profileForm,setProfileForm]=useState({full_name:"",email:"",title:""});
@@ -407,13 +411,32 @@ export default function Portal(){
     }
   };
 
+  const loadRentRollMonthly=async(propId, month)=>{
+    if(!propId||!month) return;
+    setRrMonthlyLoading(true);
+    const d=await apiFetch(`/rent-roll/${propId}/monthly?month=${month}`);
+    if(d) setRrTabMonthly(d);
+    setRrMonthlyLoading(false);
+  };
+
   const loadRentRollTab=async(propId)=>{
-    if(!propId){setRrTabLeases([]);return;}
+    if(!propId){setRrTabLeases([]);setRrTabMonths([]);setRrTabMonth("");setRrTabMonthly([]);return;}
     setRrTabLoading(true);
-    const d=await apiFetch(`/rent-roll/${propId}/leases`);
+    const [d, months] = await Promise.all([
+      apiFetch(`/rent-roll/${propId}/leases`),
+      apiFetch(`/rent-roll/${propId}/months`)
+    ]);
     if(d){
       setRentRollLeases(prev=>({...prev,[propId]:d}));
       setRrTabLeases(d);
+    }
+    if(months&&months.length>0){
+      setRrTabMonths(months);
+      // Default to current month if available, else latest
+      const currentMonth=new Date().toISOString().slice(0,7);
+      const defaultMonth=months.includes(currentMonth)?currentMonth:months[months.length-1];
+      setRrTabMonth(defaultMonth);
+      loadRentRollMonthly(propId, defaultMonth);
     }
     setRrTabLoading(false);
   };
@@ -1563,6 +1586,12 @@ export default function Portal(){
           const totalRent = filtered.reduce((a,l)=>a+(parseFloat(l.annualized_rent)||0),0);
           const exp1yr = filtered.filter(l=>(parseFloat(l.remaining_years)||0)<=1).length;
 
+          // Monthly totals if month selected
+          const filteredIds = new Set(filtered.map(l=>l.id));
+          const monthlyFiltered = rrTabMonthly.filter(m=>filteredIds.has(m.lease_id));
+          const totalMonthlyRent = monthlyFiltered.reduce((a,m)=>a+(parseFloat(m.rent)||0),0);
+          const totalMonthlySC = monthlyFiltered.reduce((a,m)=>a+(parseFloat(m.sc)||0),0);
+
           return(
             <div>
               {/* Filters */}
@@ -1606,6 +1635,16 @@ export default function Portal(){
                       <option value="3+">{">"} 3 years</option>
                     </select>
                   </div>
+                  {rrTabMonths.length>0&&<div>
+                    <label style={s.label}>📅 View month</label>
+                    <select style={{...s.input,width:150,fontWeight:600,color:QB.blue,borderColor:QB.blue}} value={rrTabMonth} onChange={e=>{
+                      setRrTabMonth(e.target.value);
+                      if(rrTabProp&&e.target.value) loadRentRollMonthly(parseInt(rrTabProp),e.target.value);
+                    }}>
+                      <option value="">— Lease data only —</option>
+                      {rrTabMonths.map(m=><option key={m} value={m}>{fmtMonth(m)}</option>)}
+                    </select>
+                  </div>}
                   <div style={{flex:1,minWidth:160}}>
                     <label style={s.label}>Search tenant / unit</label>
                     <input style={s.input} placeholder="Search..." value={rrTabSearch} onChange={e=>setRrTabSearch(e.target.value)}/>
@@ -1639,8 +1678,12 @@ export default function Portal(){
                     {[
                       {label:"Filtered Leases",value:filtered.length,color:QB.textPrimary},
                       {label:"Total GLA",value:`${fmtShort(totalGLA)} m²`,color:QB.textPrimary},
-                      {label:"Ann. Rent",value:`EGP ${fmtShort(totalRent)}`,color:QB.green},
-                      {label:"Expiring < 1yr",value:exp1yr,color:exp1yr>0?"#C80C0F":QB.green},
+                      rrTabMonth&&totalMonthlyRent>0
+                        ?{label:`Monthly Rent · ${fmtMonth(rrTabMonth)}`,value:`EGP ${fmtShort(totalMonthlyRent)}`,color:QB.green}
+                        :{label:"Ann. Rent",value:`EGP ${fmtShort(totalRent)}`,color:QB.green},
+                      rrTabMonth&&totalMonthlySC>0
+                        ?{label:`Monthly SC · ${fmtMonth(rrTabMonth)}`,value:`EGP ${fmtShort(totalMonthlySC)}`,color:QB.blue}
+                        :{label:"Expiring < 1yr",value:exp1yr,color:exp1yr>0?"#C80C0F":QB.green},
                     ].map(({label,value,color})=>(
                       <div key={label} style={{...s.card,marginBottom:0,textAlign:"center",padding:"14px 16px"}}>
                         <div style={{fontSize:10,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em",marginBottom:4}}>{label}</div>
@@ -1652,7 +1695,10 @@ export default function Portal(){
                   {/* Leases table */}
                   <div style={s.card}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-                      <div style={s.cardTitle}>Lease Register — {filtered.length} records</div>
+                      <div style={s.cardTitle}>
+                        Lease Register — {filtered.length} records
+                        {rrTabMonth&&<span style={{fontSize:12,color:QB.blue,fontWeight:400,marginLeft:8}}>· {fmtMonth(rrTabMonth)}</span>}
+                      </div>
                       <button style={{...s.btnS,padding:"6px 14px",fontSize:12,display:"flex",alignItems:"center",gap:5}}
                         onClick={()=>{
                           const prop=properties.find(p=>p.id===parseInt(rrTabProp));
@@ -1701,7 +1747,10 @@ export default function Portal(){
                         <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                           <thead style={{position:"sticky",top:0,zIndex:5}}>
                             <tr style={{background:QB.bgSidebar}}>
-                              {["Tenant","Unit","Floor","Type","GLA m²","Ann. Rent","Rent/m²","SC/m²","Lease Start","Lease End","Rem. Yrs","Escalation"].map(h=>(
+                              {[...["Tenant","Unit","Floor","Type","GLA m²"],
+                               ...(rrTabMonth?["Monthly Rent","Monthly SC"]:["Ann. Rent","Rent/m²","SC/m²"]),
+                               ...["Lease Start","Lease End","Rem. Yrs","Escalation"]
+                             ].map(h=>(
                                 <th key={h} style={{padding:"9px 10px",textAlign:"left",fontSize:10,color:QB.textMuted,fontWeight:600,textTransform:"uppercase",letterSpacing:".06em",borderBottom:`2px solid ${QB.borderCard}`,whiteSpace:"nowrap"}}>{h}</th>
                               ))}
                             </tr>
@@ -1719,8 +1768,16 @@ export default function Portal(){
                                   <td style={{padding:"8px 10px",color:QB.textMuted}}>{l.floor||"—"}</td>
                                   <td style={{padding:"8px 10px"}}><span style={{padding:"2px 7px",borderRadius:10,fontSize:10,background:QB.blueLight,color:QB.blue,border:`1px solid ${QB.blue}22`,whiteSpace:"nowrap"}}>{l.unit_type||"—"}</span></td>
                                   <td style={{padding:"8px 10px",textAlign:"right",color:QB.textSecondary}}>{fmtShort(l.gla)}</td>
-                                  <td style={{padding:"8px 10px",textAlign:"right",fontWeight:600,color:QB.green,whiteSpace:"nowrap"}}>EGP {fmtShort(l.annualized_rent)}</td>
-                                  <td style={{padding:"8px 10px",textAlign:"right",color:QB.textSecondary,whiteSpace:"nowrap"}}>{l.rent_per_sqm?`EGP ${fmtShort(l.rent_per_sqm)}`:"—"}</td>
+                                  {rrTabMonth?(()=>{
+                                    const mData=rrTabMonthly.find(m=>m.lease_id===l.id);
+                                    return(<>
+                                      <td style={{padding:"8px 10px",textAlign:"right",fontWeight:600,color:QB.green,whiteSpace:"nowrap"}}>{mData&&mData.rent>0?`EGP ${fmtShort(mData.rent)}`:"—"}</td>
+                                      <td style={{padding:"8px 10px",textAlign:"right",fontWeight:600,color:QB.blue,whiteSpace:"nowrap"}}>{mData&&mData.sc>0?`EGP ${fmtShort(mData.sc)}`:"—"}</td>
+                                    </>);
+                                  })():(()=>(<>
+                                    <td style={{padding:"8px 10px",textAlign:"right",fontWeight:600,color:QB.green,whiteSpace:"nowrap"}}>EGP {fmtShort(l.annualized_rent)}</td>
+                                    <td style={{padding:"8px 10px",textAlign:"right",color:QB.textSecondary,whiteSpace:"nowrap"}}>{l.rent_per_sqm?`EGP ${fmtShort(l.rent_per_sqm)}`:"—"}</td>
+                                  </>))()}
                                   <td style={{padding:"8px 10px",textAlign:"right",color:QB.textSecondary,whiteSpace:"nowrap"}}>{l.sc_per_sqm?`EGP ${fmtShort(l.sc_per_sqm)}`:"—"}</td>
                                   <td style={{padding:"8px 10px",color:QB.textMuted,whiteSpace:"nowrap"}}>{fmtDate(l.lease_start)}</td>
                                   <td style={{padding:"8px 10px",color:QB.textSecondary,whiteSpace:"nowrap"}}>{fmtDate(l.lease_end)}</td>
