@@ -1594,12 +1594,15 @@ export default function Portal(){
               const q=rrTabSearch.toLowerCase();
               if(!l.tenant_brand?.toLowerCase().includes(q)&&!l.unit_code?.toLowerCase().includes(q)) return false;
             }
-            if(rrTabExpiry){
-              const y=parseFloat(l.remaining_years)||0;
-              if(rrTabExpiry==="0-1"&&!(y<=1)) return false;
-              if(rrTabExpiry==="1-2"&&!(y>1&&y<=2)) return false;
-              if(rrTabExpiry==="2-3"&&!(y>2&&y<=3)) return false;
-              if(rrTabExpiry==="3+"&&!(y>3)) return false;
+            if(rrTabExpiry&&l.lease_end){
+              const end=new Date(l.lease_end);
+              const now=new Date();
+              const diffMs=end-now;
+              const diffYrs=diffMs/(1000*60*60*24*365.25);
+              if(rrTabExpiry==="0-1"&&!(diffYrs<=1)) return false;
+              if(rrTabExpiry==="1-2"&&!(diffYrs>1&&diffYrs<=2)) return false;
+              if(rrTabExpiry==="2-3"&&!(diffYrs>2&&diffYrs<=3)) return false;
+              if(rrTabExpiry==="3+"&&!(diffYrs>3)) return false;
             }
             if(rrTabDateFrom&&l.lease_end&&new Date(l.lease_end)<new Date(rrTabDateFrom)) return false;
             if(rrTabDateTo&&l.lease_end&&new Date(l.lease_end)>new Date(rrTabDateTo)) return false;
@@ -1609,7 +1612,12 @@ export default function Portal(){
           // Summary KPIs from filtered
           const totalGLA = filtered.reduce((a,l)=>a+(parseFloat(l.gla)||0),0);
           const totalRent = filtered.reduce((a,l)=>a+(parseFloat(l.annualized_rent)||0),0);
-          const exp1yr = filtered.filter(l=>(parseFloat(l.remaining_years)||0)<=1).length;
+          const now=new Date();
+          const exp1yr = filtered.filter(l=>{
+            if(!l.lease_end) return false;
+            const diffYrs=(new Date(l.lease_end)-now)/(1000*60*60*24*365.25);
+            return diffYrs<=1;
+          }).length;
 
           // Monthly totals if month selected
           const filteredIds = new Set(filtered.map(l=>l.id));
@@ -2231,9 +2239,11 @@ export default function Portal(){
                       return(
                         <div key={label} onClick={async()=>{
                           const all=rentRollLeases[rr.property_id]||await loadRentRollLeases(rr.property_id);
+                          const drillNow=new Date();
                           const filtered=all.filter(l=>{
-                            const y=parseFloat(l.remaining_years)||0;
-                            return y>minYr&&y<=maxYr;
+                            if(!l.lease_end) return false;
+                            const diffYrs=(new Date(l.lease_end)-drillNow)/(1000*60*60*24*365.25);
+                            return diffYrs>minYr&&diffYrs<=maxYr;
                           });
                           setRrDrilldown({label,color,leases:filtered,subLabel:rr.sub_location});
                         }} style={{padding:"10px 12px",background:bg,borderRadius:QB.radiusMD,textAlign:"center",cursor:"pointer",border:"2px solid transparent",transition:"border .15s"}}
