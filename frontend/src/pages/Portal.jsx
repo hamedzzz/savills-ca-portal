@@ -1734,6 +1734,30 @@ export default function Portal(){
                       </div>
                       <button style={{...s.btnS,padding:"6px 14px",fontSize:12,display:"flex",alignItems:"center",gap:5}}
                         onClick={()=>{
+                          // Excel export
+                          const prop=properties.find(p=>p.id===parseInt(rrTabProp));
+                          const fmtDate=d=>d?new Date(d).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—";
+                          const headers=["Tenant","Unit","Floor","Type","GLA m²","Ann. Rent (EGP)","Rent/m² (EGP)","SC/m² (EGP)","Lease Start","Lease End","Rem. Years","Escalation %","Sub-location"];
+                          const rows=filtered.map(l=>[
+                            l.tenant_brand||"",l.unit_code||"",l.floor||"",l.unit_type||"",
+                            parseFloat(l.gla)||0,parseFloat(l.annualized_rent)||0,
+                            parseFloat(l.rent_per_sqm)||0,parseFloat(l.sc_per_sqm)||0,
+                            fmtDate(l.lease_start),fmtDate(l.lease_end),
+                            parseFloat(l.remaining_years)||0,
+                            parseFloat(l.escalation_rate)||0,
+                            l.sub_location||""
+                          ]);
+                          const csvContent=[headers,...rows].map(r=>r.map(v=>typeof v==="string"&&v.includes(",")?`"${v}"`:v).join(",")).join("
+");
+                          const BOM="﻿";
+                          const blob=new Blob([BOM+csvContent],{type:"text/csv;charset=utf-8;"});
+                          const url=URL.createObjectURL(blob);
+                          const a=document.createElement("a");
+                          a.href=url;a.download=`RentRoll_${prop?.name||"Export"}_${rrTabSub||"All"}_${new Date().toISOString().slice(0,10)}.csv`;
+                          document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+                        }}>📊 Export Excel</button>
+                      <button style={{...s.btnS,padding:"6px 14px",fontSize:12,display:"flex",alignItems:"center",gap:5}}
+                        onClick={()=>{
                           const prop=properties.find(p=>p.id===parseInt(rrTabProp));
                           const fmtDate=d=>d?new Date(d).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—";
                           const rows=filtered.map(l=>{
