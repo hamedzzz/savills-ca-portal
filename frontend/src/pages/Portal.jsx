@@ -1732,6 +1732,7 @@ export default function Portal(){
                         Lease Register — {filtered.length} records
                         {rrTabMonth&&<span style={{fontSize:12,color:QB.blue,fontWeight:400,marginLeft:8}}>· {fmtMonth(rrTabMonth)}</span>}
                       </div>
+                      <div style={{display:"flex",gap:8}}>
                       <button style={{...s.btnS,padding:"6px 14px",fontSize:12,display:"flex",alignItems:"center",gap:5}}
                         onClick={()=>{
                           // Excel export
@@ -1798,6 +1799,7 @@ export default function Portal(){
                           </div></body></html>`;
                           const w=window.open("","_blank");w.document.write(html);w.document.close();w.focus();setTimeout(()=>w.print(),500);
                         }}>📄 Export PDF</button>
+                      </div>
                     </div>
                     {filtered.length===0?<div style={{textAlign:"center",padding:"30px",color:QB.textMuted,fontSize:13}}>No leases match your filters</div>:(
                       <div style={{overflowX:"auto",maxHeight:520,overflowY:"auto"}}>
