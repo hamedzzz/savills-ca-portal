@@ -120,6 +120,16 @@ def init_db():
         revenue_sharing_rate NUMERIC DEFAULT 0,
         security_deposit NUMERIC DEFAULT 0
     )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS rent_roll_monthly (
+        id SERIAL PRIMARY KEY,
+        lease_id INTEGER NOT NULL REFERENCES rent_roll_leases(id) ON DELETE CASCADE,
+        upload_id INTEGER NOT NULL REFERENCES rent_roll_uploads(id) ON DELETE CASCADE,
+        property_id INTEGER NOT NULL REFERENCES properties(id),
+        month TEXT NOT NULL,
+        rent NUMERIC DEFAULT 0,
+        sc NUMERIC DEFAULT 0
+    )""")
+
     c.execute("""CREATE TABLE IF NOT EXISTS edit_requests (
         id SERIAL PRIMARY KEY,
         requested_by INTEGER NOT NULL REFERENCES ca_users(id),
@@ -161,6 +171,8 @@ def init_db():
     safe_exec(c, conn, "ALTER TABLE collection_logs ADD CONSTRAINT collection_logs_property_month UNIQUE (property_id, month)")
     safe_exec(c, conn, "DELETE FROM properties WHERE id NOT IN (SELECT MIN(id) FROM properties GROUP BY name)")
     safe_exec(c, conn, "ALTER TABLE rent_roll_uploads ADD COLUMN IF NOT EXISTS sub_location TEXT DEFAULT ''")
+    safe_exec(c, conn, """CREATE INDEX IF NOT EXISTS idx_rrm_lease_month ON rent_roll_monthly(lease_id, month)""")
+    safe_exec(c, conn, """CREATE INDEX IF NOT EXISTS idx_rrm_upload_month ON rent_roll_monthly(upload_id, month)""")
     conn.commit()
 
     default_settings = [
@@ -723,6 +735,45 @@ async def upload_rent_roll(property_id: int = Form(...), sub_location: str = For
              lease_start, lease_end, float(gv('Remaining Years',0)), float(gv('Remaining Months',0)),
              float(gv('Annualized Rent',0)), ann_sc, monthly, float(gv('Indoor Rent Per Sqm',0)), sc_sqm,
              float(gv('Rent Escalation Rate',0)), float(gv('Revenue Sharing Rate',0)), float(gv('Security Deposit',0))))
+    # After inserting all leases, fetch their IDs and save monthly data
+    c.execute("SELECT id, document_no FROM rent_roll_leases WHERE upload_id=%s", (upload_id,))
+    lease_id_map = {row["document_no"]: row["id"] for row in c.fetchall()}
+
+    # Get all month columns from the file (format: YYYY-MM)
+    month_cols = sorted([col for col in df.columns if str(col).startswith('20') and len(str(col))==7])
+
+    # Build monthly inserts for rent + SC
+    monthly_rows = []
+    for _, row in rent.iterrows():
+        doc_no = str(row.get('Document No',''))
+        lease_id = lease_id_map.get(doc_no)
+        if not lease_id:
+            continue
+        # Find matching SC row
+        sc_row = sc_df[sc_df['Document No']==row.get('Document No','')]
+        for mc in month_cols:
+            r_val = 0.0
+            s_val = 0.0
+            try:
+                rv = row.get(mc)
+                if rv is not None and not pd.isna(rv):
+                    r_val = float(rv)
+            except: pass
+            try:
+                if len(sc_row)>0:
+                    sv = sc_row.iloc[0].get(mc)
+                    if sv is not None and not pd.isna(sv):
+                        s_val = float(sv)
+            except: pass
+            if r_val > 0 or s_val > 0:
+                monthly_rows.append((lease_id, upload_id, property_id, mc, r_val, s_val))
+
+    # Batch insert monthly data
+    if monthly_rows:
+        psycopg2.extras.execute_values(c,
+            "INSERT INTO rent_roll_monthly (lease_id, upload_id, property_id, month, rent, sc) VALUES %s",
+            monthly_rows)
+
     log_activity(conn, current_user["id"], "uploaded rent roll", "property", str(property_id), f"leases={summary['active_leases']} month={report_month}")
     conn.commit(); conn.close()
     return {"ok": True, "upload_id": upload_id, "sub_location": sub_location, **summary}
@@ -750,6 +801,37 @@ def get_all_rent_rolls(current_user=Depends(get_current_user)):
                  FROM rent_roll_uploads u JOIN properties p ON u.property_id=p.id
                  ORDER BY u.property_id, u.sub_location, u.upload_date DESC""")
     rows = [dict(r) for r in c.fetchall()]; conn.close(); return rows
+
+@app.get("/rent-roll/{property_id}/monthly")
+def get_rent_roll_monthly(property_id: int, month: str, current_user=Depends(get_current_user)):
+    """Get monthly rent + SC for all leases in a property for a specific month"""
+    conn = get_db(); c = conn.cursor()
+    c.execute("""
+        SELECT m.lease_id, m.month, m.rent, m.sc,
+               l.tenant_brand, l.unit_code, l.unit_type, l.floor, l.gla,
+               l.remaining_years, l.lease_start, l.lease_end, l.escalation_rate,
+               u.sub_location
+        FROM rent_roll_monthly m
+        JOIN rent_roll_leases l ON m.lease_id=l.id
+        JOIN rent_roll_uploads u ON m.upload_id=u.id
+        WHERE m.property_id=%s AND m.month=%s
+        ORDER BY u.sub_location, l.remaining_years ASC
+    """, (property_id, month))
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return rows
+
+@app.get("/rent-roll/{property_id}/months")
+def get_rent_roll_months(property_id: int, current_user=Depends(get_current_user)):
+    """Get list of available months for a property's rent roll"""
+    conn = get_db(); c = conn.cursor()
+    c.execute("""
+        SELECT DISTINCT month FROM rent_roll_monthly
+        WHERE property_id=%s ORDER BY month
+    """, (property_id,))
+    rows = [r["month"] for r in c.fetchall()]
+    conn.close()
+    return rows
 
 @app.get("/pbi/embed-token/{report_id}")
 async def get_embed_token(report_id: str, workspace_id: str = PBI_WORKSPACE_ID, current_user=Depends(get_current_user)):
