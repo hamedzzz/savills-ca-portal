@@ -1750,8 +1750,7 @@ export default function Portal(){
                             parseFloat(l.escalation_rate)||0,
                             l.sub_location||""
                           ]);
-                          const csvContent=[headers,...rows].map(r=>r.map(v=>typeof v==="string"&&v.includes(",")?`"${v}"`:v).join(",")).join("
-");
+                          const csvContent=[headers,...rows].map(r=>r.map(v=>typeof v==="string"&&v.includes(",")?`"${v}"`:v).join(",")).join("\n");
                           const BOM="﻿";
                           const blob=new Blob([BOM+csvContent],{type:"text/csv;charset=utf-8;"});
                           const url=URL.createObjectURL(blob);
