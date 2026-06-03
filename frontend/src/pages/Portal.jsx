@@ -2263,7 +2263,70 @@ export default function Portal(){
                         {rrDrilldown.subLabel&&<span style={{fontSize:12,color:QB.textMuted,marginLeft:8}}>· {rrDrilldown.subLabel}</span>}
                         <span style={{fontSize:12,color:QB.textMuted,marginLeft:8}}>({rrDrilldown.leases.length} leases)</span>
                       </div>
-                      <button onClick={()=>setRrDrilldown(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:QB.textMuted}}>✕ Close</button>
+                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                        <button style={{...s.btnS,padding:"4px 12px",fontSize:12,color:QB.blue,borderColor:QB.blue}} onClick={()=>{
+                          // Navigate to Rent Roll tab with filter
+                          const rr=showRentRoll;
+                          const propId=rr?.property_id;
+                          if(propId){
+                            setTab("rent-roll");
+                            setRrTabProp(String(propId));
+                            if(rrDrilldown.subLabel) setRrTabSub(rrDrilldown.subLabel);
+                            // Set expiry filter based on drilldown label
+                            const label=rrDrilldown.label;
+                            if(label==="< 1 year") setRrTabExpiry("0-1");
+                            else if(label==="1–2 years") setRrTabExpiry("1-2");
+                            else if(label==="2–3 years") setRrTabExpiry("2-3");
+                            else if(label==="> 3 years") setRrTabExpiry("3+");
+                            else setRrTabExpiry("");
+                            loadRentRollTab(propId);
+                          }
+                          setShowRentRoll(null);setRrDrilldown(null);
+                        }}>📋 Open in Rent Roll →</button>
+                        <button style={{...s.btnS,padding:"4px 12px",fontSize:12}} onClick={()=>{
+                          // PDF Export of drill-down
+                          const rr=showRentRoll;
+                          const prop=properties.find(p=>p.id===rr?.property_id);
+                          const fmtDate=d=>d?new Date(d).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—";
+                          const rows=rrDrilldown.leases.map((l,i)=>`
+                            <tr style="background:${i%2===0?"#fff":"#F8F9FA"};border-bottom:1px solid #EEF0F3">
+                              <td style="padding:7px 10px;font-weight:500;color:#1C1C1C">${l.tenant_brand||"—"}</td>
+                              <td style="padding:7px 10px;color:#57647A">${l.unit_code||"—"}</td>
+                              <td style="padding:7px 10px;color:#57647A">${l.unit_type||"—"}</td>
+                              <td style="padding:7px 10px;text-align:right;color:#57647A">${fmtShort(l.gla)}</td>
+                              <td style="padding:7px 10px;text-align:right;font-weight:600;color:#2CA01C">EGP ${fmtShort(l.annualized_rent)}</td>
+                              <td style="padding:7px 10px;text-align:right;color:#57647A">${l.rent_per_sqm?`EGP ${fmtShort(l.rent_per_sqm)}`:"—"}</td>
+                              <td style="padding:7px 10px;color:#57647A;white-space:nowrap">${fmtDate(l.lease_end)}</td>
+                              <td style="padding:7px 10px;text-align:center;font-weight:700;color:${parseFloat(l.remaining_years)<=1?"#C80C0F":parseFloat(l.remaining_years)<=2?"#B45309":"#2CA01C"}">${(parseFloat(l.remaining_years)||0).toFixed(1)}</td>
+                            </tr>`).join("");
+                          const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${rrDrilldown.label} — ${prop?.name||""}</title>
+                            <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+                            @media print{@page{margin:15mm;size:A4 landscape}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head>
+                            <body>
+                            <div style="height:4px;background:#FEDE07"></div>
+                            <div style="padding:18px 24px;border-bottom:1px solid #E3E8EF;display:flex;justify-content:space-between;align-items:center">
+                              <div>
+                                <div style="font-size:15px;font-weight:700;color:#1C1C1C">${prop?.name||""} — ${rrDrilldown.label}</div>
+                                <div style="font-size:11px;color:#8C96A3">${rrDrilldown.subLabel||""} · ${rrDrilldown.leases.length} leases · Generated ${new Date().toLocaleDateString("en-GB")}</div>
+                              </div>
+                              <span style="font-size:11px;color:#C4CBD6">Confidential</span>
+                            </div>
+                            <div style="padding:16px 24px">
+                            <div style="height:2px;background:linear-gradient(to right,#C80C0F,#FEDE07);margin-bottom:14px"></div>
+                            <table style="width:100%;border-collapse:collapse;font-size:11px">
+                            <thead><tr style="background:#F8F9FA;border-bottom:2px solid #E3E8EF">
+                              ${["Tenant","Unit","Type","GLA m²","Ann. Rent","Rent/m²","Lease End","Rem. Yrs"].map(h=>`<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:600;color:#57647A;text-transform:uppercase;letter-spacing:.07em">${h}</th>`).join("")}
+                            </tr></thead>
+                            <tbody>${rows}</tbody>
+                            </table>
+                            <div style="margin-top:12px;padding-top:10px;border-top:1px solid #EEF0F3;display:flex;justify-content:space-between;font-size:10px;color:#8C96A3">
+                              <span>Savills Egypt CA · Client Accounting · Property Management</span>
+                              <span>Total GLA: ${fmtShort(rrDrilldown.leases.reduce((a,l)=>a+(parseFloat(l.gla)||0),0))} m² · Ann. Rent: EGP ${fmtShort(rrDrilldown.leases.reduce((a,l)=>a+(parseFloat(l.annualized_rent)||0),0))}</span>
+                            </div></div></body></html>`;
+                          const w=window.open("","_blank");w.document.write(html);w.document.close();w.focus();setTimeout(()=>w.print(),500);
+                        }}>📄 Export PDF</button>
+                        <button onClick={()=>setRrDrilldown(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:13,color:QB.textMuted}}>✕ Close</button>
+                      </div>
                     </div>
                     <div style={{overflowX:"auto",maxHeight:320,overflowY:"auto"}}>
                       <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
