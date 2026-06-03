@@ -152,6 +152,8 @@ export default function Portal(){
   const[rrTabType,setRrTabType]=useState("");
   const[rrTabExpiry,setRrTabExpiry]=useState("");
   const[rrTabSearch,setRrTabSearch]=useState("");
+  const[rrTabDateFrom,setRrTabDateFrom]=useState("");
+  const[rrTabDateTo,setRrTabDateTo]=useState("");
   const[rrTabLeases,setRrTabLeases]=useState([]);
   const[rrTabLoading,setRrTabLoading]=useState(false);
 
@@ -1538,7 +1540,7 @@ export default function Portal(){
           // Filter leases
           const unitTypes = [...new Set(rrTabLeases.map(l=>l.unit_type).filter(Boolean))].sort();
           const filtered = rrTabLeases.filter(l=>{
-            if(rrTabSub && l.sub_location!==rrTabSub) return false;
+            if(rrTabSub && (l.sub_location||"")!==rrTabSub) return false;
             if(rrTabType && l.unit_type!==rrTabType) return false;
             if(rrTabSearch){
               const q=rrTabSearch.toLowerCase();
@@ -1551,6 +1553,8 @@ export default function Portal(){
               if(rrTabExpiry==="2-3"&&!(y>2&&y<=3)) return false;
               if(rrTabExpiry==="3+"&&!(y>3)) return false;
             }
+            if(rrTabDateFrom&&l.lease_end&&new Date(l.lease_end)<new Date(rrTabDateFrom)) return false;
+            if(rrTabDateTo&&l.lease_end&&new Date(l.lease_end)>new Date(rrTabDateTo)) return false;
             return true;
           });
 
@@ -1606,8 +1610,16 @@ export default function Portal(){
                     <label style={s.label}>Search tenant / unit</label>
                     <input style={s.input} placeholder="Search..." value={rrTabSearch} onChange={e=>setRrTabSearch(e.target.value)}/>
                   </div>
-                  {(rrTabSub||rrTabType||rrTabExpiry||rrTabSearch)&&
-                    <button style={{...s.btnS,padding:"8px 12px",fontSize:12}} onClick={()=>{setRrTabSub("");setRrTabType("");setRrTabExpiry("");setRrTabSearch("");}}>✕ Clear</button>
+                  <div>
+                    <label style={s.label}>Lease end from</label>
+                    <input type="date" style={{...s.input,width:140}} value={rrTabDateFrom} onChange={e=>setRrTabDateFrom(e.target.value)}/>
+                  </div>
+                  <div>
+                    <label style={s.label}>Lease end to</label>
+                    <input type="date" style={{...s.input,width:140}} value={rrTabDateTo} onChange={e=>setRrTabDateTo(e.target.value)}/>
+                  </div>
+                  {(rrTabSub||rrTabType||rrTabExpiry||rrTabSearch||rrTabDateFrom||rrTabDateTo)&&
+                    <button style={{...s.btnS,padding:"8px 12px",fontSize:12}} onClick={()=>{setRrTabSub("");setRrTabType("");setRrTabExpiry("");setRrTabSearch("");setRrTabDateFrom("");setRrTabDateTo("");}}>✕ Clear</button>
                   }
                 </div>
               </div>
@@ -1641,6 +1653,48 @@ export default function Portal(){
                   <div style={s.card}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
                       <div style={s.cardTitle}>Lease Register — {filtered.length} records</div>
+                      <button style={{...s.btnS,padding:"6px 14px",fontSize:12,display:"flex",alignItems:"center",gap:5}}
+                        onClick={()=>{
+                          const prop=properties.find(p=>p.id===parseInt(rrTabProp));
+                          const fmtDate=d=>d?new Date(d).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—";
+                          const rows=filtered.map(l=>{
+                            const remYr=(parseFloat(l.remaining_years)||0).toFixed(1);
+                            const remColor=parseFloat(l.remaining_years)<=1?"#C80C0F":parseFloat(l.remaining_years)<=2?"#B45309":"#2CA01C";
+                            return `<tr style="border-bottom:1px solid #EEF0F3">
+                              <td style="padding:8px 10px;font-weight:500;color:#1C1C1C;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.tenant_brand||"—"}</td>
+                              <td style="padding:8px 10px;color:#57647A">${l.unit_code||"—"}</td>
+                              <td style="padding:8px 10px;color:#57647A">${l.unit_type||"—"}</td>
+                              <td style="padding:8px 10px;text-align:right;color:#57647A">${fmtShort(l.gla)}</td>
+                              <td style="padding:8px 10px;text-align:right;font-weight:600;color:#2CA01C">EGP ${fmtShort(l.annualized_rent)}</td>
+                              <td style="padding:8px 10px;text-align:right;color:#57647A">${l.rent_per_sqm?`EGP ${fmtShort(l.rent_per_sqm)}`:"—"}</td>
+                              <td style="padding:8px 10px;color:#57647A">${fmtDate(l.lease_end)}</td>
+                              <td style="padding:8px 10px;text-align:center;font-weight:700;color:${remColor}">${remYr}</td>
+                            </tr>`;
+                          }).join("");
+                          const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Rent Roll — ${prop?.name||""}</title>
+                          <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1C1C1C}
+                          @media print{@page{margin:15mm;size:A4 landscape}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head>
+                          <body>
+                          <div style="height:4px;background:#FEDE07"></div>
+                          <div style="padding:20px 24px;border-bottom:1px solid #E3E8EF;display:flex;justify-content:space-between;align-items:center">
+                            <div><div style="font-size:16px;font-weight:700">Rent Roll — ${prop?.name||""}</div>
+                            <div style="font-size:11px;color:#8C96A3">${rrTabSub||"All sub-locations"} · ${filtered.length} leases · Generated ${new Date().toLocaleDateString("en-GB")}</div></div>
+                            <div style="font-size:11px;color:#C4CBD6">Confidential</div>
+                          </div>
+                          <div style="padding:16px 24px">
+                          <div style="height:2px;background:linear-gradient(to right,#C80C0F,#FEDE07);margin-bottom:16px"></div>
+                          <table style="width:100%;border-collapse:collapse;font-size:11px">
+                          <thead><tr style="background:#F8F9FA">
+                            ${["Tenant","Unit","Type","GLA m²","Ann. Rent","Rent/m²","Lease End","Rem. Yrs"].map(h=>`<th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:600;color:#57647A;text-transform:uppercase;letter-spacing:.07em;border-bottom:2px solid #E3E8EF">${h}</th>`).join("")}
+                          </tr></thead>
+                          <tbody>${rows}</tbody>
+                          </table></div>
+                          <div style="padding:12px 24px;border-top:1px solid #EEF0F3;display:flex;justify-content:space-between;font-size:10px;color:#8C96A3;margin-top:16px">
+                            <span>Savills Egypt CA · Client Accounting · Property Management</span>
+                            <span>Total GLA: ${fmtShort(totalGLA)} m² · Ann. Rent: EGP ${fmtShort(totalRent)}</span>
+                          </div></body></html>`;
+                          const w=window.open("","_blank");w.document.write(html);w.document.close();w.focus();setTimeout(()=>w.print(),500);
+                        }}>📄 Export PDF</button>
                     </div>
                     {filtered.length===0?<div style={{textAlign:"center",padding:"30px",color:QB.textMuted,fontSize:13}}>No leases match your filters</div>:(
                       <div style={{overflowX:"auto",maxHeight:520,overflowY:"auto"}}>
