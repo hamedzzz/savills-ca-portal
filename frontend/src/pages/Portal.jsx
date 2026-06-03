@@ -161,6 +161,7 @@ export default function Portal(){
   const[rrTabMonths,setRrTabMonths]=useState([]);
   const[rrMonthlyLoading,setRrMonthlyLoading]=useState(false);
 
+  const[adminMenuOpen,setAdminMenuOpen]=useState(false);
   const[showProfile,setShowProfile]=useState(false);
   const[profileForm,setProfileForm]=useState({full_name:"",email:"",title:""});
   const[pwForm,setPwForm]=useState({current_password:"",new_password:"",confirm:""});
@@ -456,11 +457,12 @@ export default function Portal(){
   const propReports=reports.filter(r=>r.property_id===selectedProp?.id);
   const reportTypes=["Collection","Aging","Budget vs Actual","Invoice Reconciliation","Income Statement","Other"];
 
+  const adminDropdownTabs=["email","manage-reports","users","requests","activity","settings"];
   const tabs=isAdmin
-    ?["properties","reports","collection","rent-roll","email","manage-reports","users","requests","activity","settings"]
+    ?["properties","collection","rent-roll","reports"]
     :isEditor
-    ?["properties","reports","collection","rent-roll","email"]
-    :["properties","reports","collection","rent-roll"];
+    ?["properties","collection","rent-roll","reports","email"]
+    :["properties","collection","rent-roll","reports"];
 
   const tabLabels={
     properties:"Properties",
@@ -470,7 +472,7 @@ export default function Portal(){
     email:"Email",
     "manage-reports":"Manage Reports",
     users:"Users",
-    requests:"requests",
+    requests:"Requests",
     activity:"Activity",
     settings:"⚙ Settings"
   };
@@ -511,6 +513,14 @@ export default function Portal(){
       </div>
     </div>
   );
+
+  // Close admin menu on outside click
+  useEffect(()=>{
+    if(!adminMenuOpen) return;
+    const handler=()=>setAdminMenuOpen(false);
+    document.addEventListener("click",handler);
+    return()=>document.removeEventListener("click",handler);
+  },[adminMenuOpen]);
 
   const Flash=()=>msg?<div style={{position:"fixed",top:20,right:20,zIndex:9999,padding:"12px 18px",borderRadius:QB.radiusLG,background:msg.type==="error"?QB.redBg:QB.greenBg,color:msg.type==="error"?QB.red:QB.green,border:`1px solid ${msg.type==="error"?QB.redBorder:QB.greenBorder}`,fontSize:13,fontWeight:500,boxShadow:QB.shadowCard}}>{msg.text}</div>:null;
   const Empty=({text})=><div style={{textAlign:"center",padding:"40px 20px",color:QB.textMuted,fontSize:13}}>{text}</div>;
@@ -607,17 +617,32 @@ export default function Portal(){
 
       <div style={s.wrap}>
         {/* TAB BAR */}
-        <div style={s.tabBar}>
+        <div style={{...s.tabBar,position:"relative"}}>
           {tabs.map(t=>(
-            <button key={t} style={s.tab(tab===t)} onClick={()=>{setTab(t);setSelectedProp(null);setSelectedReport(null);}}>
-              {t==="requests"
-                ?<span style={{display:"flex",alignItems:"center",gap:5}}>
-                    Requests
-                    {pendingCount>0&&<span style={{background:QB.red,color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px",minWidth:16,textAlign:"center"}}>{pendingCount}</span>}
-                  </span>
-                :tabLabels[t]}
+            <button key={t} style={s.tab(tab===t)} onClick={()=>{setTab(t);setSelectedProp(null);setSelectedReport(null);setAdminMenuOpen(false);}}>
+              {tabLabels[t]}
             </button>
           ))}
+          {isAdmin&&(
+            <div style={{position:"relative",marginLeft:"auto"}}>
+              <button onClick={()=>setAdminMenuOpen(v=>!v)}
+                style={{...s.tab(adminDropdownTabs.includes(tab)),display:"flex",alignItems:"center",gap:5}}>
+                {adminDropdownTabs.includes(tab)?tabLabels[tab]:"Admin"}
+                {pendingCount>0&&!adminDropdownTabs.includes(tab)&&<span style={{background:QB.red,color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px"}}>{pendingCount}</span>}
+                <span style={{fontSize:10,opacity:0.6}}>{adminMenuOpen?"▲":"▼"}</span>
+              </button>
+              {adminMenuOpen&&<div style={{position:"absolute",top:"100%",right:0,background:QB.bgCard,border:`1px solid ${QB.borderCard}`,borderRadius:QB.radiusLG,boxShadow:QB.shadowModal,zIndex:200,minWidth:180,overflow:"hidden"}}>
+                {adminDropdownTabs.map(t=>(
+                  <button key={t} onClick={()=>{setTab(t);setSelectedProp(null);setSelectedReport(null);setAdminMenuOpen(false);}}
+                    style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"10px 16px",fontSize:13,border:"none",background:tab===t?QB.blueLight:"transparent",color:tab===t?QB.blue:QB.textPrimary,cursor:"pointer",fontFamily:QB.fontFamily,fontWeight:tab===t?600:400,textAlign:"left",gap:8}}>
+                    {tabLabels[t]}
+                    {t==="requests"&&pendingCount>0&&<span style={{background:QB.red,color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px"}}>{pendingCount}</span>}
+                    {t==="settings"&&<span style={{opacity:0.5}}>⚙</span>}
+                  </button>
+                ))}
+              </div>}
+            </div>
+          )}
         </div>
 
         {/* ══════════════════════════════════════════════════════════════════
