@@ -1688,16 +1688,15 @@ export default function Portal(){
           return(
             <div>
               {/* Sub-tab bar */}
-              <div style={{display:"flex",gap:0,marginBottom:16,borderBottom:`2px solid ${QB.borderLight}`}}>
+              <div style={{display:"flex",borderBottom:`2px solid ${QB.borderLight}`,marginBottom:20}}>
                 {rrSubTabs.map(t=>(
-                  <button key={t.id} onClick={()=>setRrSubTab(t.id)}
-                    style={{padding:"8px 20px",fontSize:13,fontWeight:rrSubTab===t.id?600:400,color:rrSubTab===t.id?QB.blue:QB.textMuted,background:"none",border:"none",borderBottom:rrSubTab===t.id?`2px solid ${QB.blue}`:"2px solid transparent",cursor:"pointer",marginBottom:-2,fontFamily:QB.fontFamily}}>
+                  <button key={t.id} onClick={()=>setRrSubTab(t.id)} style={{padding:"8px 20px",fontSize:13,fontWeight:rrSubTab===t.id?600:400,color:rrSubTab===t.id?QB.blue:QB.textMuted,background:"none",border:"none",borderBottom:rrSubTab===t.id?`2px solid ${QB.blue}`:"2px solid transparent",cursor:"pointer",marginBottom:-2,fontFamily:QB.fontFamily}}>
                     {t.label}
                   </button>
                 ))}
               </div>
 
-              {/* Upload Log sub-tab */}
+                            {/* Upload Log sub-tab */}
               {rrSubTab==="log"&&<div style={{...s.card,marginBottom:16}}>
                 <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
                   <select style={{...s.input,width:180}} value={rrHistoryProp}
@@ -1764,6 +1763,7 @@ export default function Portal(){
               </div>}
 
               {/* Leases sub-tab */}
+              {rrSubTab==="leases"&&<div>
               {rrSubTab==="leases"&&<div>
               {/* Filters */}
               <div style={{...s.card,marginBottom:16}}>
@@ -2014,8 +2014,9 @@ export default function Portal(){
                   </div>
                 </>
               )}
+            
+              </div>}
             </div>
-          </div>}
           );
         })()}
 
