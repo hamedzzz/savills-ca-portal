@@ -1980,7 +1980,7 @@ export default function Portal(){
                               const remBg=remYr<=1?"#FEF2F2":remYr<=2?"#FFFBEB":"transparent";
                               const fmtDate=d=>d?new Date(d).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—";
                               return(
-                                <tr key={l.id||i} onClick={()=>setSelectedLease(l)} style={{background:i%2===0?QB.bgCard:QB.bgSidebar,borderBottom:`1px solid ${QB.borderLight}`,cursor:"pointer"}}
+                                <tr key={l.id||i} onClick={()=>{setUnitDetail(l);setScheduleTab("yearly");}} style={{background:i%2===0?QB.bgCard:QB.bgSidebar,borderBottom:`1px solid ${QB.borderLight}`,cursor:"pointer"}}
                                   onMouseEnter={e=>e.currentTarget.style.background=QB.blueLight}
                                   onMouseLeave={e=>e.currentTarget.style.background=i%2===0?QB.bgCard:QB.bgSidebar}>
                                   <td style={{padding:"8px 10px",fontWeight:600,color:QB.textPrimary,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={l.tenant_brand}>{l.tenant_brand||"—"}</td>
