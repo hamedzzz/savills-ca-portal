@@ -130,6 +130,26 @@ def init_db():
         sc NUMERIC DEFAULT 0
     )""")
 
+    c.execute("""CREATE TABLE IF NOT EXISTS customers (
+        id SERIAL PRIMARY KEY,
+        brand_name TEXT NOT NULL,
+        legal_name TEXT DEFAULT '',
+        unit_code TEXT DEFAULT '',
+        unit_type TEXT DEFAULT '',
+        location TEXT DEFAULT '',
+        lease_type TEXT DEFAULT '',
+        property_id INTEGER REFERENCES properties(id),
+        sub_location TEXT DEFAULT '',
+        bank_account TEXT DEFAULT '',
+        phone TEXT DEFAULT '',
+        email TEXT DEFAULT '',
+        notes TEXT DEFAULT '',
+        source TEXT DEFAULT 'manual',
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(brand_name, unit_code)
+    )""")
+
     c.execute("""CREATE TABLE IF NOT EXISTS edit_requests (
         id SERIAL PRIMARY KEY,
         requested_by INTEGER NOT NULL REFERENCES ca_users(id),
@@ -832,6 +852,189 @@ def get_rent_roll_months(property_id: int, current_user=Depends(get_current_user
     rows = [r["month"] for r in c.fetchall()]
     conn.close()
     return rows
+
+# ── Customers ─────────────────────────────────────────────────────────────────
+@app.get("/customers")
+def list_customers(search: str = None, property_id: int = None,
+                   current_user=Depends(get_current_user)):
+    conn = get_db(); c = conn.cursor()
+    q = """SELECT c.*, p.name as property_name FROM customers c
+           LEFT JOIN properties p ON c.property_id=p.id WHERE 1=1"""
+    params = []
+    if search:
+        q += " AND (c.brand_name ILIKE %s OR c.legal_name ILIKE %s OR c.unit_code ILIKE %s)"
+        params += [f"%{search}%", f"%{search}%", f"%{search}%"]
+    if property_id:
+        q += " AND c.property_id=%s"; params.append(property_id)
+    q += " ORDER BY c.brand_name ASC LIMIT 500"
+    c.execute(q, params)
+    rows = [dict(r) for r in c.fetchall()]; conn.close(); return rows
+
+@app.get("/customers/{customer_id}")
+def get_customer(customer_id: int, current_user=Depends(get_current_user)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("""SELECT c.*, p.name as property_name FROM customers c
+                 LEFT JOIN properties p ON c.property_id=p.id WHERE c.id=%s""", (customer_id,))
+    row = c.fetchone(); conn.close()
+    if not row: raise HTTPException(404, "Customer not found")
+    return dict(row)
+
+@app.post("/customers", status_code=201)
+def create_customer(data: dict, current_user=Depends(require_editor)):
+    conn = get_db(); c = conn.cursor()
+    brand = data.get("brand_name","").strip()
+    unit = data.get("unit_code","").strip()
+    if not brand: raise HTTPException(400, "Brand name required")
+    # Check duplicate
+    c.execute("SELECT id FROM customers WHERE brand_name ILIKE %s AND unit_code ILIKE %s",
+              (brand, unit))
+    if c.fetchone():
+        conn.close(); raise HTTPException(409, f"Customer '{brand}' with unit '{unit}' already exists")
+    c.execute("""INSERT INTO customers
+        (brand_name,legal_name,unit_code,unit_type,location,lease_type,property_id,
+         sub_location,bank_account,phone,email,notes,source)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+        (brand, data.get("legal_name",""), unit,
+         data.get("unit_type",""), data.get("location",""),
+         data.get("lease_type",""), data.get("property_id") or None,
+         data.get("sub_location",""), data.get("bank_account",""),
+         data.get("phone",""), data.get("email",""),
+         data.get("notes",""), data.get("source","manual")))
+    new_id = c.fetchone()["id"]
+    log_activity(conn, current_user["id"], "added customer", "customer", brand)
+    conn.commit(); conn.close(); return {"id": new_id}
+
+@app.patch("/customers/{customer_id}")
+def update_customer(customer_id: int, data: dict, current_user=Depends(require_editor)):
+    conn = get_db(); c = conn.cursor()
+    allowed = {k: v for k, v in data.items() if k in (
+        "brand_name","legal_name","unit_code","unit_type","location","lease_type",
+        "property_id","sub_location","bank_account","phone","email","notes")}
+    if not allowed: raise HTTPException(400, "Nothing to update")
+    allowed["updated_at"] = datetime.utcnow()
+    set_clause = ", ".join(f"{k}=%s" for k in allowed)
+    c.execute(f"UPDATE customers SET {set_clause} WHERE id=%s", (*allowed.values(), customer_id))
+    c.execute("SELECT brand_name FROM customers WHERE id=%s", (customer_id,))
+    row = c.fetchone()
+    log_activity(conn, current_user["id"], "updated customer", "customer",
+                 row["brand_name"] if row else str(customer_id))
+    conn.commit(); conn.close(); return {"ok": True}
+
+@app.delete("/customers/{customer_id}")
+def delete_customer(customer_id: int, admin=Depends(require_admin)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT brand_name FROM customers WHERE id=%s", (customer_id,))
+    row = c.fetchone()
+    c.execute("DELETE FROM customers WHERE id=%s", (customer_id,))
+    log_activity(conn, admin["id"], "deleted customer", "customer",
+                 row["brand_name"] if row else str(customer_id))
+    conn.commit(); conn.close(); return {"ok": True}
+
+@app.post("/customers/import")
+async def import_customers(file: UploadFile = File(...),
+                           property_id: int = Form(default=None),
+                           current_user=Depends(require_editor)):
+    """Import customers from Excel — skips duplicates"""
+    import pandas as pd
+    content = await file.read()
+    try:
+        df = pd.read_excel(io.BytesIO(content))
+    except Exception as e:
+        raise HTTPException(400, f"Cannot read file: {e}")
+
+    # Flexible column mapping
+    col_map = {
+        "brand_name": ["Brand","Brand Name","brand_name","Tenant Brand","Tenant Brand Name"],
+        "legal_name": ["Customer Name","Legal Name","legal_name","Tenant Legal Name","Tenant Legal"],
+        "unit_code":  ["Unit Code","unit_code","Unit","Account"],
+        "unit_type":  ["Lease Type","Unit Type","unit_type","Type"],
+        "location":   ["Location","Sub Location","location","sub_location"],
+        "bank_account": ["Remittance Bank Account","Bank Account","bank_account"],
+    }
+
+    def find_col(df, candidates):
+        for c in candidates:
+            if c in df.columns: return c
+        return None
+
+    mapped = {}
+    for field, candidates in col_map.items():
+        col = find_col(df, candidates)
+        if col: mapped[field] = col
+
+    if "brand_name" not in mapped:
+        raise HTTPException(400, "Cannot find Brand Name column")
+
+    conn = get_db(); c = conn.cursor()
+    added = 0; skipped = 0; errors = []
+
+    for _, row in df.iterrows():
+        brand = str(row.get(mapped["brand_name"], "")).strip()
+        if not brand or brand.lower() in ("nan","none",""): continue
+        unit = str(row.get(mapped.get("unit_code",""), "")).strip() if "unit_code" in mapped else ""
+        if unit.lower() == "nan": unit = ""
+
+        # Check duplicate
+        c.execute("SELECT id FROM customers WHERE brand_name ILIKE %s AND unit_code ILIKE %s",
+                  (brand, unit))
+        if c.fetchone():
+            skipped += 1; continue
+
+        try:
+            legal = str(row.get(mapped.get("legal_name",""), "")).strip() if "legal_name" in mapped else ""
+            utype = str(row.get(mapped.get("unit_type",""), "")).strip() if "unit_type" in mapped else ""
+            loc   = str(row.get(mapped.get("location",""), "")).strip() if "location" in mapped else ""
+            bank  = str(row.get(mapped.get("bank_account",""), "")).strip() if "bank_account" in mapped else ""
+            for v in [legal, utype, loc, bank]:
+                if v.lower() == "nan": v = ""
+
+            c.execute("""INSERT INTO customers
+                (brand_name,legal_name,unit_code,unit_type,location,property_id,bank_account,source)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (brand, legal if legal != "nan" else "",
+                 unit, utype if utype != "nan" else "",
+                 loc if loc != "nan" else "",
+                 property_id, bank if bank != "nan" else "", "import"))
+            added += 1
+        except Exception as e:
+            skipped += 1; errors.append(str(e)[:100])
+
+    log_activity(conn, current_user["id"], "imported customers", "customer",
+                 file.filename, f"added={added} skipped={skipped}")
+    conn.commit(); conn.close()
+    return {"ok": True, "added": added, "skipped": skipped, "errors": errors[:5]}
+
+@app.post("/customers/import-from-rent-roll")
+def import_from_rent_roll(property_id: int, current_user=Depends(require_editor)):
+    """Pull customers from existing rent roll leases"""
+    conn = get_db(); c = conn.cursor()
+    c.execute("""SELECT DISTINCT ON (l.tenant_brand, l.unit_code)
+                 l.tenant_brand, l.tenant_legal, l.unit_code, l.unit_type,
+                 u.sub_location, u.property_id
+                 FROM rent_roll_leases l
+                 JOIN rent_roll_uploads u ON l.upload_id=u.id
+                 WHERE u.property_id=%s AND l.tenant_brand IS NOT NULL
+                 ORDER BY l.tenant_brand, l.unit_code, u.upload_date DESC""", (property_id,))
+    leases = c.fetchall()
+    added = 0; skipped = 0
+    for l in leases:
+        brand = (l["tenant_brand"] or "").strip()
+        unit = (l["unit_code"] or "").strip()
+        if not brand: continue
+        c.execute("SELECT id FROM customers WHERE brand_name ILIKE %s AND unit_code ILIKE %s",
+                  (brand, unit))
+        if c.fetchone(): skipped += 1; continue
+        c.execute("""INSERT INTO customers
+            (brand_name,legal_name,unit_code,unit_type,sub_location,property_id,source)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+            (brand, l["tenant_legal"] or "", unit,
+             l["unit_type"] or "", l["sub_location"] or "",
+             l["property_id"], "rent_roll"))
+        added += 1
+    log_activity(conn, current_user["id"], "imported from rent roll", "customer",
+                 str(property_id), f"added={added} skipped={skipped}")
+    conn.commit(); conn.close()
+    return {"ok": True, "added": added, "skipped": skipped}
 
 @app.get("/pbi/embed-token/{report_id}")
 async def get_embed_token(report_id: str, workspace_id: str = PBI_WORKSPACE_ID, current_user=Depends(get_current_user)):
