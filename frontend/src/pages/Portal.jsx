@@ -166,6 +166,13 @@ export default function Portal(){
 
   const[adminMenuOpen,setAdminMenuOpen]=useState(false);
   const[unitDetail,setUnitDetail]=useState(null);
+  const[customers,setCustomers]=useState([]);
+  const[customerSearch,setCustomerSearch]=useState("");
+  const[customerDetail,setCustomerDetail]=useState(null);
+  const[customerForm,setCustomerForm]=useState({brand_name:"",legal_name:"",unit_code:"",unit_type:"",location:"",lease_type:"",property_id:"",sub_location:"",bank_account:"",phone:"",email:"",notes:""});
+  const[showCustomerForm,setShowCustomerForm]=useState(false);
+  const[editCustomer,setEditCustomer]=useState(null);
+  const[importingCustomers,setImportingCustomers]=useState(false);
   const[selectedLease,setSelectedLease]=useState(null);
   const[showProfile,setShowProfile]=useState(false);
   const[profileForm,setProfileForm]=useState({full_name:"",email:"",title:""});
@@ -417,6 +424,11 @@ export default function Portal(){
     }
   };
 
+  const loadCustomers=async(search="")=>{
+    const d=await apiFetch(`/customers${search?`?search=${encodeURIComponent(search)}`:""}`);
+    if(d) setCustomers(d);
+  };
+
   const loadRentRollMonthly=async(propId, month)=>{
     if(!propId||!month) return;
     setRrMonthlyLoading(true);
@@ -454,7 +466,7 @@ export default function Portal(){
     if(d)setActivities(d);
   };
 
-  useEffect(()=>{load();loadEditRequests();loadRentRolls();},[]);
+  useEffect(()=>{load();loadEditRequests();loadRentRolls();loadCustomers();},[]);
   useEffect(()=>{if(tab==="activity")loadActivities();},[tab,actFilterUser,actFilterDays]);
   useEffect(()=>{if(showProfile)setProfileForm({full_name:user?.full_name||"",email:user?.email||"",title:user?.title||""});},[showProfile]);
 
@@ -462,7 +474,7 @@ export default function Portal(){
   const propReports=reports.filter(r=>r.property_id===selectedProp?.id);
   const reportTypes=["Collection","Aging","Budget vs Actual","Invoice Reconciliation","Income Statement","Other"];
 
-  const adminDropdownTabs=["email","manage-reports","users","requests","activity","settings"];
+  const adminDropdownTabs=["email","manage-reports","users","customers","requests","activity","settings"];
   const tabs=isAdmin
     ?["properties","collection","rent-roll","reports"]
     :isEditor
@@ -478,6 +490,7 @@ export default function Portal(){
     "manage-reports":"Manage Reports",
     users:"Users",
     requests:"Requests",
+    customers:"Customers DB",
     activity:"Activity",
     settings:"⚙ Settings"
   };
@@ -1908,6 +1921,99 @@ export default function Portal(){
         })()}
 
         {/* ══════════════════════════════════════════════════════════════════
+            CUSTOMERS DB TAB (admin only)
+        ══════════════════════════════════════════════════════════════════ */}
+        {tab==="customers"&&isAdmin&&<div>
+          {/* Header + actions */}
+          <div style={{...s.card,marginBottom:16}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+              <div style={s.cardTitle}>Customer Database — {customers.length} records</div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {/* Import from Rent Roll */}
+                <div>
+                  <select style={{...s.input,width:160,fontSize:12}} defaultValue="" onChange={async e=>{
+                    const pid=parseInt(e.target.value); if(!pid) return;
+                    try{
+                      const r=await apiFetch("/customers/import-from-rent-roll",{method:"POST",body:JSON.stringify({property_id:pid})});
+                      if(r){flash(`Imported ${r.added} customers (${r.skipped} skipped)`);loadCustomers();}
+                    }catch(ex){flash(ex.message,"error");}
+                    e.target.value="";
+                  }}>
+                    <option value="">📋 Import from Rent Roll...</option>
+                    {properties.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+                {/* Upload Excel */}
+                <label style={{...s.btnS,padding:"7px 14px",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                  📥 Upload Excel
+                  <input type="file" accept=".xlsx,.csv" style={{display:"none"}} onChange={async e=>{
+                    const file=e.target.files[0]; if(!file) return;
+                    setImportingCustomers(true);
+                    const fd=new FormData(); fd.append("file",file);
+                    try{
+                      const token=localStorage.getItem("ca_token");
+                      const API=import.meta.env.VITE_API_URL||"http://localhost:8001";
+                      const res=await fetch(`${API}/customers/import`,{method:"POST",headers:{Authorization:`Bearer ${token}`},body:fd});
+                      const r=await res.json();
+                      flash(`Imported ${r.added} customers (${r.skipped} skipped)`);
+                      loadCustomers();
+                    }catch(ex){flash(ex.message||"Import failed","error");}
+                    finally{setImportingCustomers(false);e.target.value="";}
+                  }}/>
+                  {importingCustomers&&" ⏳"}
+                </label>
+                {/* Add manual */}
+                <button style={s.btnP} onClick={()=>{setEditCustomer(null);setCustomerForm({brand_name:"",legal_name:"",unit_code:"",unit_type:"",location:"",lease_type:"",property_id:"",sub_location:"",bank_account:"",phone:"",email:"",notes:""});setShowCustomerForm(true);}}>+ Add Customer</button>
+              </div>
+            </div>
+            {/* Search */}
+            <div style={{marginTop:12,display:"flex",gap:8}}>
+              <input style={{...s.input,flex:1}} placeholder="🔍 Search by brand, legal name, or unit..."
+                value={customerSearch} onChange={e=>{setCustomerSearch(e.target.value);loadCustomers(e.target.value);}}/>
+              {customerSearch&&<button style={{...s.btnS,padding:"8px 12px",fontSize:12}} onClick={()=>{setCustomerSearch("");loadCustomers("");}}>✕</button>}
+            </div>
+          </div>
+
+          {/* Customer table */}
+          <div style={s.card}>
+            {customers.length===0?<div style={{textAlign:"center",padding:"40px",color:QB.textMuted,fontSize:13}}>
+              {customerSearch?"No customers match your search":"No customers yet — import from Rent Roll or upload Excel"}
+            </div>:(
+              <div style={{overflowX:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                  <thead>
+                    <tr style={{background:QB.bgSidebar}}>
+                      {["Brand","Legal Name","Unit","Type","Location","Property","Source",""].map(h=>(
+                        <th key={h} style={s.th}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {customers.map((c,i)=>(
+                      <tr key={c.id} onClick={()=>setCustomerDetail(c)}
+                        style={{background:i%2===0?QB.bgCard:QB.bgSidebar,cursor:"pointer",borderBottom:`1px solid ${QB.borderLight}`}}
+                        onMouseEnter={e=>e.currentTarget.style.background=QB.blueLight}
+                        onMouseLeave={e=>e.currentTarget.style.background=i%2===0?QB.bgCard:QB.bgSidebar}>
+                        <td style={{...s.td,fontWeight:600,color:QB.textPrimary}}>{c.brand_name}</td>
+                        <td style={{...s.td,color:QB.textSecondary,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.legal_name||"—"}</td>
+                        <td style={{...s.td,color:QB.textSecondary}}>{c.unit_code||"—"}</td>
+                        <td style={s.td}>{c.unit_type?<Badge label={c.unit_type} color="gray"/>:"—"}</td>
+                        <td style={{...s.td,color:QB.textSecondary}}>{c.location||c.sub_location||"—"}</td>
+                        <td style={s.td}>{c.property_name?<Badge label={c.property_name} color="blue"/>:"—"}</td>
+                        <td style={s.td}><Badge label={c.source||"manual"} color={c.source==="rent_roll"?"green":c.source==="import"?"purple":"gray"}/></td>
+                        <td style={s.td}>
+                          <button style={{...s.btnS,padding:"3px 10px",fontSize:11}} onClick={e=>{e.stopPropagation();setEditCustomer(c);setCustomerForm({...c,property_id:c.property_id||""});setShowCustomerForm(true);}}>Edit</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>}
+
+        {/* ══════════════════════════════════════════════════════════════════
             SETTINGS TAB (admin only)
         ══════════════════════════════════════════════════════════════════ */}
         {tab==="settings"&&isAdmin&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,alignItems:"start"}}>
@@ -2520,6 +2626,117 @@ export default function Portal(){
                 Contract No: {unitDetail.document_no}
               </div>
             )}
+          </div>
+        </div>}
+
+        {/* Customer Detail Modal */}
+        {customerDetail&&<div style={s.overlay} onClick={()=>setCustomerDetail(null)}>
+          <div style={{...s.modal,width:520}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+              <div>
+                <div style={{fontSize:15,fontWeight:700,color:QB.textPrimary}}>{customerDetail.brand_name}</div>
+                {customerDetail.legal_name&&<div style={{fontSize:12,color:QB.textMuted,marginTop:2}}>{customerDetail.legal_name}</div>}
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button style={{...s.btnS,padding:"5px 12px",fontSize:12}} onClick={()=>{setEditCustomer(customerDetail);setCustomerForm({...customerDetail,property_id:customerDetail.property_id||""});setShowCustomerForm(true);setCustomerDetail(null);}}>✏ Edit</button>
+                <button onClick={()=>setCustomerDetail(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:QB.textMuted}}>✕</button>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+              {[
+                {label:"Unit Code",value:customerDetail.unit_code},
+                {label:"Unit Type",value:customerDetail.unit_type},
+                {label:"Location",value:customerDetail.location||customerDetail.sub_location},
+                {label:"Lease Type",value:customerDetail.lease_type},
+                {label:"Property",value:customerDetail.property_name},
+                {label:"Bank Account",value:customerDetail.bank_account},
+                {label:"Phone",value:customerDetail.phone},
+                {label:"Email",value:customerDetail.email},
+              ].map(({label,value})=>value?(
+                <div key={label} style={{padding:"10px 12px",background:QB.bgSidebar,borderRadius:QB.radiusMD,border:`1px solid ${QB.borderLight}`}}>
+                  <div style={{fontSize:10,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em",marginBottom:3}}>{label}</div>
+                  <div style={{fontSize:13,fontWeight:500,color:QB.textPrimary}}>{value}</div>
+                </div>
+              ):null)}
+            </div>
+            {customerDetail.notes&&<div style={{padding:"10px 14px",background:QB.amberBg,borderRadius:QB.radiusMD,border:`1px solid ${QB.amberBorder}`,fontSize:12,color:QB.textSecondary}}>
+              <strong>Notes:</strong> {customerDetail.notes}
+            </div>}
+            <div style={{marginTop:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <Badge label={customerDetail.source||"manual"} color={customerDetail.source==="rent_roll"?"green":customerDetail.source==="import"?"purple":"gray"}/>
+              {isAdmin&&<button style={{...s.btnS,padding:"5px 12px",fontSize:12,color:QB.red,borderColor:QB.redBorder}}
+                onClick={async()=>{if(!confirm(`Delete "${customerDetail.brand_name}"?`))return;
+                  await apiFetch(`/customers/${customerDetail.id}`,{method:"DELETE"});
+                  setCustomerDetail(null);loadCustomers(customerSearch);flash("Customer deleted");}}>Delete</button>}
+            </div>
+          </div>
+        </div>}
+
+        {/* Customer Add/Edit Form Modal */}
+        {showCustomerForm&&<div style={s.overlay} onClick={()=>setShowCustomerForm(false)}>
+          <div style={{...s.modal,width:560}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+              <div style={s.modalTitle}>{editCustomer?"Edit Customer":"Add Customer"}</div>
+              <button onClick={()=>setShowCustomerForm(false)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:QB.textMuted}}>✕</button>
+            </div>
+            <div style={s.formGrid}>
+              <div><label style={s.label}>Brand Name *</label>
+                <input style={s.input} value={customerForm.brand_name} onChange={e=>setCustomerForm(f=>({...f,brand_name:e.target.value}))} placeholder="e.g. Ariika"/>
+              </div>
+              <div><label style={s.label}>Legal Name</label>
+                <input style={s.input} value={customerForm.legal_name} onChange={e=>setCustomerForm(f=>({...f,legal_name:e.target.value}))} placeholder="Full legal entity name"/>
+              </div>
+              <div><label style={s.label}>Unit Code</label>
+                <input style={s.input} value={customerForm.unit_code} onChange={e=>setCustomerForm(f=>({...f,unit_code:e.target.value}))} placeholder="e.g. AZ-305"/>
+              </div>
+              <div><label style={s.label}>Unit Type</label>
+                <input style={s.input} value={customerForm.unit_type} onChange={e=>setCustomerForm(f=>({...f,unit_type:e.target.value}))} placeholder="e.g. Retail, Offices"/>
+              </div>
+              <div><label style={s.label}>Property</label>
+                <select style={s.input} value={customerForm.property_id} onChange={e=>setCustomerForm(f=>({...f,property_id:e.target.value}))}>
+                  <option value="">—</option>
+                  {properties.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <div><label style={s.label}>Sub-location</label>
+                <input style={s.input} value={customerForm.sub_location} onChange={e=>setCustomerForm(f=>({...f,sub_location:e.target.value}))} placeholder="e.g. Arkan 1"/>
+              </div>
+              <div><label style={s.label}>Location</label>
+                <input style={s.input} value={customerForm.location} onChange={e=>setCustomerForm(f=>({...f,location:e.target.value}))} placeholder="e.g. Arkan Extension"/>
+              </div>
+              <div><label style={s.label}>Lease Type</label>
+                <input style={s.input} value={customerForm.lease_type} onChange={e=>setCustomerForm(f=>({...f,lease_type:e.target.value}))} placeholder="e.g. Retail, Offices"/>
+              </div>
+              <div><label style={s.label}>Bank Account</label>
+                <input style={s.input} value={customerForm.bank_account} onChange={e=>setCustomerForm(f=>({...f,bank_account:e.target.value}))} placeholder="Remittance account"/>
+              </div>
+              <div><label style={s.label}>Phone</label>
+                <input style={s.input} value={customerForm.phone} onChange={e=>setCustomerForm(f=>({...f,phone:e.target.value}))}/>
+              </div>
+              <div style={{gridColumn:"1/-1"}}><label style={s.label}>Email</label>
+                <input style={s.input} value={customerForm.email} onChange={e=>setCustomerForm(f=>({...f,email:e.target.value}))}/>
+              </div>
+              <div style={{gridColumn:"1/-1"}}><label style={s.label}>Notes</label>
+                <textarea style={{...s.input,minHeight:56,resize:"vertical"}} value={customerForm.notes} onChange={e=>setCustomerForm(f=>({...f,notes:e.target.value}))}/>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button style={s.btnP} onClick={async()=>{
+                if(!customerForm.brand_name.trim()){flash("Brand name required","error");return;}
+                try{
+                  const payload={...customerForm,property_id:customerForm.property_id?parseInt(customerForm.property_id):null};
+                  if(editCustomer){
+                    await apiFetch(`/customers/${editCustomer.id}`,{method:"PATCH",body:JSON.stringify(payload)});
+                    flash("Customer updated");
+                  }else{
+                    await apiFetch("/customers",{method:"POST",body:JSON.stringify(payload)});
+                    flash("Customer added");
+                  }
+                  setShowCustomerForm(false);loadCustomers(customerSearch);
+                }catch(ex){flash(ex.message,"error");}
+              }}>{editCustomer?"Save changes":"Add customer"}</button>
+              <button style={s.btnS} onClick={()=>setShowCustomerForm(false)}>Cancel</button>
+            </div>
           </div>
         </div>}
 
