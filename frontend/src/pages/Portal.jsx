@@ -173,6 +173,8 @@ export default function Portal(){
   const[showCustomerForm,setShowCustomerForm]=useState(false);
   const[editCustomer,setEditCustomer]=useState(null);
   const[importingCustomers,setImportingCustomers]=useState(false);
+  const[customerFilterProp,setCustomerFilterProp]=useState("");
+  const[customerFilterSub,setCustomerFilterSub]=useState("");
   const[selectedLease,setSelectedLease]=useState(null);
   const[showProfile,setShowProfile]=useState(false);
   const[profileForm,setProfileForm]=useState({full_name:"",email:"",title:""});
@@ -424,8 +426,13 @@ export default function Portal(){
     }
   };
 
-  const loadCustomers=async(search="")=>{
-    const d=await apiFetch(`/customers${search?`?search=${encodeURIComponent(search)}`:""}`);
+  const loadCustomers=async(search="",propId="")=>{
+    let url="/customers";
+    const params=[];
+    if(search) params.push(`search=${encodeURIComponent(search)}`);
+    if(propId) params.push(`property_id=${propId}`);
+    if(params.length) url+="?"+params.join("&");
+    const d=await apiFetch(url);
     if(d) setCustomers(d);
   };
 
@@ -1966,30 +1973,80 @@ export default function Portal(){
                 <button style={s.btnP} onClick={()=>{setEditCustomer(null);setCustomerForm({brand_name:"",legal_name:"",unit_code:"",unit_type:"",location:"",lease_type:"",property_id:"",sub_location:"",bank_account:"",phone:"",email:"",notes:""});setShowCustomerForm(true);}}>+ Add Customer</button>
               </div>
             </div>
-            {/* Search */}
-            <div style={{marginTop:12,display:"flex",gap:8}}>
-              <input style={{...s.input,flex:1}} placeholder="🔍 Search by brand, legal name, or unit..."
-                value={customerSearch} onChange={e=>{setCustomerSearch(e.target.value);loadCustomers(e.target.value);}}/>
-              {customerSearch&&<button style={{...s.btnS,padding:"8px 12px",fontSize:12}} onClick={()=>{setCustomerSearch("");loadCustomers("");}}>✕</button>}
+            {/* Filters + Search + Export */}
+            <div style={{marginTop:12,display:"flex",gap:8,flexWrap:"wrap",alignItems:"flex-end"}}>
+              <div>
+                <label style={{...s.label,marginBottom:3}}>Property</label>
+                <select style={{...s.input,width:150}} value={customerFilterProp} onChange={e=>{
+                  setCustomerFilterProp(e.target.value);
+                  setCustomerFilterSub("");
+                  loadCustomers(customerSearch,e.target.value);
+                }}>
+                  <option value="">All properties</option>
+                  {properties.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              {customerFilterProp&&(()=>{
+                const subs=[...new Set(customers.map(c=>c.sub_location).filter(Boolean))];
+                return subs.length>1?<div>
+                  <label style={{...s.label,marginBottom:3}}>Sub-location</label>
+                  <select style={{...s.input,width:140}} value={customerFilterSub} onChange={e=>setCustomerFilterSub(e.target.value)}>
+                    <option value="">All</option>
+                    {subs.map(s=><option key={s}>{s}</option>)}
+                  </select>
+                </div>:null;
+              })()}
+              <div style={{flex:1,minWidth:200}}>
+                <label style={{...s.label,marginBottom:3}}>Search</label>
+                <input style={s.input} placeholder="🔍 Brand, legal name, or unit..."
+                  value={customerSearch} onChange={e=>{setCustomerSearch(e.target.value);loadCustomers(e.target.value,customerFilterProp);}}/>
+              </div>
+              {(customerSearch||customerFilterProp||customerFilterSub)&&
+                <button style={{...s.btnS,padding:"8px 12px",fontSize:12}} onClick={()=>{
+                  setCustomerSearch("");setCustomerFilterProp("");setCustomerFilterSub("");loadCustomers("");
+                }}>✕ Clear</button>}
+              <button style={{...s.btnS,padding:"8px 14px",fontSize:12,display:"flex",alignItems:"center",gap:4}} onClick={()=>{
+                const toExport=filteredCustomers;
+                const headers=["Brand Name","Legal Name","Unit Code","Unit Type","Location","Sub-location","Property","Lease Type","Bank Account","Phone","Email","Notes","Source"];
+                const rows=toExport.map(c=>[
+                  c.brand_name||"",c.legal_name||"",c.unit_code||"",c.unit_type||"",
+                  c.location||"",c.sub_location||"",c.property_name||"",
+                  c.lease_type||"",c.bank_account||"",c.phone||"",c.email||"",
+                  c.notes||"",c.source||""
+                ]);
+                const csv=[headers,...rows].map(r=>r.map(v=>String(v).includes(",")?`"${v}"`:v).join(",")).join("\n");
+                const blob=new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8;"});
+                const url=URL.createObjectURL(blob);
+                const a=document.createElement("a");
+                a.href=url;a.download=`CustomerDB_${customerFilterProp?properties.find(p=>String(p.id)===customerFilterProp)?.name||"":"All"}_${new Date().toISOString().slice(0,10)}.csv`;
+                document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+              }}>📊 Export Excel</button>
             </div>
           </div>
 
           {/* Customer table */}
+          {(()=>{
+            const filteredCustomers=customers.filter(c=>{
+              if(customerFilterSub&&(c.sub_location||"")!==customerFilterSub) return false;
+              return true;
+            });
+            return(
           <div style={s.card}>
-            {customers.length===0?<div style={{textAlign:"center",padding:"40px",color:QB.textMuted,fontSize:13}}>
-              {customerSearch?"No customers match your search":"No customers yet — import from Rent Roll or upload Excel"}
+            {filteredCustomers.length===0?<div style={{textAlign:"center",padding:"40px",color:QB.textMuted,fontSize:13}}>
+              {customerSearch||customerFilterProp?"No customers match your filters":"No customers yet — import from Rent Roll or upload Excel"}
             </div>:(
               <div style={{overflowX:"auto"}}>
+                <div style={{fontSize:12,color:QB.textMuted,marginBottom:8}}>Showing {filteredCustomers.length} customers</div>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                   <thead>
                     <tr style={{background:QB.bgSidebar}}>
-                      {["Brand","Legal Name","Unit","Type","Location","Property","Source",""].map(h=>(
+                      {["Brand","Legal Name","Unit","Type","Location","Sub-location","Property","Source",""].map(h=>(
                         <th key={h} style={s.th}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {customers.map((c,i)=>(
+                    {filteredCustomers.map((c,i)=>(
                       <tr key={c.id} onClick={()=>setCustomerDetail(c)}
                         style={{background:i%2===0?QB.bgCard:QB.bgSidebar,cursor:"pointer",borderBottom:`1px solid ${QB.borderLight}`}}
                         onMouseEnter={e=>e.currentTarget.style.background=QB.blueLight}
@@ -1998,7 +2055,8 @@ export default function Portal(){
                         <td style={{...s.td,color:QB.textSecondary,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.legal_name||"—"}</td>
                         <td style={{...s.td,color:QB.textSecondary}}>{c.unit_code||"—"}</td>
                         <td style={s.td}>{c.unit_type?<Badge label={c.unit_type} color="gray"/>:"—"}</td>
-                        <td style={{...s.td,color:QB.textSecondary}}>{c.location||c.sub_location||"—"}</td>
+                        <td style={{...s.td,color:QB.textSecondary}}>{c.location||"—"}</td>
+                        <td style={{...s.td,color:QB.textSecondary}}>{c.sub_location||"—"}</td>
                         <td style={s.td}>{c.property_name?<Badge label={c.property_name} color="blue"/>:"—"}</td>
                         <td style={s.td}><Badge label={c.source||"manual"} color={c.source==="rent_roll"?"green":c.source==="import"?"purple":"gray"}/></td>
                         <td style={s.td}>
@@ -2011,6 +2069,7 @@ export default function Portal(){
               </div>
             )}
           </div>
+          );})()}
         </div>}
 
         {/* ══════════════════════════════════════════════════════════════════
