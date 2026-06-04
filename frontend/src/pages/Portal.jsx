@@ -1934,7 +1934,7 @@ export default function Portal(){
                   <select style={{...s.input,width:160,fontSize:12}} defaultValue="" onChange={async e=>{
                     const pid=parseInt(e.target.value); if(!pid) return;
                     try{
-                      const r=await apiFetch("/customers/import-from-rent-roll",{method:"POST",body:JSON.stringify({property_id:pid})});
+                      const r=await apiFetch(`/customers/import-from-rent-roll?property_id=${pid}`,{method:"POST"});
                       if(r){flash(`Imported ${r.added} customers (${r.skipped} skipped)`);loadCustomers();}
                     }catch(ex){flash(ex.message,"error");}
                     e.target.value="";
