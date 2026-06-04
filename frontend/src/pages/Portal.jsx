@@ -1764,7 +1764,6 @@ export default function Portal(){
 
               {/* Leases sub-tab */}
               {rrSubTab==="leases"&&<div>
-              {rrSubTab==="leases"&&<div>
               {/* Filters */}
               <div style={{...s.card,marginBottom:16}}>
                 <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
