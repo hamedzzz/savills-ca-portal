@@ -160,6 +160,7 @@ export default function Portal(){
   const[rrHistory,setRrHistory]=useState([]);
   const[rrHistoryProp,setRrHistoryProp]=useState("");
   const[showRrHistory,setShowRrHistory]=useState(false);
+  const[rrSubTab,setRrSubTab]=useState("leases");
   const[rrTabMonthly,setRrTabMonthly]=useState([]);
   const[rrTabMonths,setRrTabMonths]=useState([]);
   const[rrMonthlyLoading,setRrMonthlyLoading]=useState(false);
@@ -1616,6 +1617,8 @@ export default function Portal(){
             RENT ROLL TAB
         ══════════════════════════════════════════════════════════════════ */}
         {tab==="rent-roll"&&(()=>{
+          // Sub-tab bar
+          const rrSubTabs=[{id:"leases",label:"Lease Register"},{id:"log",label:"📋 Upload Log"}];
           // Collect all sub_locations for selected property
           const propRRs = rrTabProp ? (rentRolls[parseInt(rrTabProp)]||[]) : [];
           const subLocations = [...new Set(propRRs.map(r=>r.sub_location).filter(Boolean))];
@@ -1684,23 +1687,30 @@ export default function Portal(){
 
           return(
             <div>
-              {/* Upload History Log */}
-              <div style={{...s.card,marginBottom:16}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:showRrHistory?16:0}}>
-                  <div style={{display:"flex",alignItems:"center",gap:12}}>
-                    <div style={s.cardTitle}>📋 Upload Log</div>
-                    <select style={{...s.input,width:160,fontSize:12}} value={rrHistoryProp}
-                      onChange={e=>{setRrHistoryProp(e.target.value);if(e.target.value){loadRrHistory(parseInt(e.target.value));setShowRrHistory(true);}else{setShowRrHistory(false);}}}>
-                      <option value="">Select property...</option>
-                      {Object.keys(rentRolls).map(pid=>{
-                        const prop=properties.find(p=>p.id===parseInt(pid));
-                        return prop?<option key={pid} value={pid}>{prop.name}</option>:null;
-                      })}
-                    </select>
-                  </div>
-                  {showRrHistory&&<button style={{...s.btnS,padding:"4px 10px",fontSize:12}} onClick={()=>setShowRrHistory(false)}>Hide ▲</button>}
+              {/* Sub-tab bar */}
+              <div style={{display:"flex",gap:0,marginBottom:16,borderBottom:`2px solid ${QB.borderLight}`}}>
+                {rrSubTabs.map(t=>(
+                  <button key={t.id} onClick={()=>setRrSubTab(t.id)}
+                    style={{padding:"8px 20px",fontSize:13,fontWeight:rrSubTab===t.id?600:400,color:rrSubTab===t.id?QB.blue:QB.textMuted,background:"none",border:"none",borderBottom:rrSubTab===t.id?`2px solid ${QB.blue}`:"2px solid transparent",cursor:"pointer",marginBottom:-2,fontFamily:QB.fontFamily}}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Upload Log sub-tab */}
+              {rrSubTab==="log"&&<div style={{...s.card,marginBottom:16}}>
+                <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+                  <select style={{...s.input,width:180}} value={rrHistoryProp}
+                    onChange={e=>{setRrHistoryProp(e.target.value);if(e.target.value) loadRrHistory(parseInt(e.target.value));}}>
+                    <option value="">Select property...</option>
+                    {Object.keys(rentRolls).map(pid=>{
+                      const prop=properties.find(p=>p.id===parseInt(pid));
+                      return prop?<option key={pid} value={pid}>{prop.name}</option>:null;
+                    })}
+                  </select>
+                  {rrHistoryProp&&<span style={{fontSize:12,color:QB.textMuted}}>{rrHistory.length} uploads</span>}
                 </div>
-                {showRrHistory&&rrHistory.length>0&&(
+                {rrHistory.length>0?(
                   <div style={{overflowX:"auto"}}>
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                       <thead><tr style={{background:QB.bgSidebar}}>
@@ -1748,10 +1758,13 @@ export default function Portal(){
                       </tbody>
                     </table>
                   </div>
-                )}
-                {showRrHistory&&rrHistory.length===0&&<div style={{textAlign:"center",padding:"20px",color:QB.textMuted,fontSize:13}}>No upload history</div>}
-              </div>
+                ):<div style={{textAlign:"center",padding:"30px",color:QB.textMuted,fontSize:13}}>
+                  {rrHistoryProp?"No upload history found":"Select a property to view upload history"}
+                </div>}
+              </div>}
 
+              {/* Leases sub-tab */}
+              {rrSubTab==="leases"&&<div>
               {/* Filters */}
               <div style={{...s.card,marginBottom:16}}>
                 <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
@@ -2002,6 +2015,7 @@ export default function Portal(){
                 </>
               )}
             </div>
+          </div>}
           );
         })()}
 
@@ -2729,6 +2743,7 @@ export default function Portal(){
                 )}
               </div>
             </div>
+          </div>}
           );
         })()}
 
