@@ -1943,7 +1943,14 @@ export default function Portal(){
                     const pid=parseInt(e.target.value); if(!pid) return;
                     try{
                       const r=await apiFetch(`/customers/import-from-rent-roll?property_id=${pid}`,{method:"POST"});
-                      if(r){flash(`Imported ${r.added} customers (${r.skipped} skipped)`);loadCustomers();}
+                      if(r){
+                        const parts=[];
+                        if(r.added>0) parts.push(`${r.added} added`);
+                        if(r.updated>0) parts.push(`${r.updated} updated`);
+                        if(r.skipped>0) parts.push(`${r.skipped} skipped`);
+                        flash(parts.join(" · ") || "No changes");
+                        loadCustomers(customerSearch,customerFilterProp);
+                      }
                     }catch(ex){flash(ex.message,"error");}
                     e.target.value="";
                   }}>
