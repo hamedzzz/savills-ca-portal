@@ -1093,6 +1093,56 @@ def import_from_rent_roll(property_id: int = None, data: dict = None, current_us
     conn.commit(); conn.close()
     return {"ok": True, "added": added, "updated": updated, "skipped": skipped}
 
+@app.get("/rent-roll/{property_id}/history")
+def get_rent_roll_history(property_id: int, current_user=Depends(get_current_user)):
+    """Full upload history for a property with change deltas"""
+    conn = get_db(); c = conn.cursor()
+    c.execute("""
+        SELECT u.*, usr.full_name as uploaded_by_name
+        FROM rent_roll_uploads u
+        JOIN ca_users usr ON u.uploaded_by=usr.id
+        WHERE u.property_id=%s
+        ORDER BY u.sub_location, u.upload_date DESC
+    """, (property_id,))
+    rows = [dict(r) for r in c.fetchall()]
+
+    # Group by sub_location and compute deltas
+    from collections import defaultdict
+    by_sub = defaultdict(list)
+    for r in rows:
+        by_sub[r["sub_location"]].append(r)
+
+    result = []
+    for sub, uploads in by_sub.items():
+        for i, upload in enumerate(uploads):
+            prev = uploads[i+1] if i+1 < len(uploads) else None
+            entry = {
+                "id": upload["id"],
+                "sub_location": upload["sub_location"],
+                "filename": upload["filename"],
+                "report_date": upload["report_date"],
+                "upload_date": upload["upload_date"].isoformat() if upload["upload_date"] else None,
+                "uploaded_by_name": upload["uploaded_by_name"],
+                "active_leases": upload["active_leases"],
+                "unique_tenants": upload["unique_tenants"],
+                "total_gla": float(upload["total_gla"] or 0),
+                "annualized_rent": float(upload["annualized_rent"] or 0),
+                "monthly_rent": float(upload["monthly_rent"] or 0),
+                "monthly_sc": float(upload["monthly_sc"] or 0),
+                "expiry_0_1yr": upload["expiry_0_1yr"],
+                "is_latest": i == 0,
+                # Deltas vs previous upload
+                "delta_leases": upload["active_leases"] - prev["active_leases"] if prev else None,
+                "delta_gla": float(upload["total_gla"] or 0) - float(prev["total_gla"] or 0) if prev else None,
+                "delta_rent": float(upload["annualized_rent"] or 0) - float(prev["annualized_rent"] or 0) if prev else None,
+            }
+            result.append(entry)
+
+    # Sort: latest first overall
+    result.sort(key=lambda x: x["upload_date"] or "", reverse=True)
+    conn.close()
+    return result
+
 @app.get("/pbi/embed-token/{report_id}")
 async def get_embed_token(report_id: str, workspace_id: str = PBI_WORKSPACE_ID, current_user=Depends(get_current_user)):
     try:
