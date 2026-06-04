@@ -2798,6 +2798,98 @@ export default function Portal(){
                 Contract No: {unitDetail.document_no}
               </div>
             )}
+
+            {/* Payment Schedule */}
+            {unitDetail.lease_start&&unitDetail.lease_end&&(()=>{
+              const start=new Date(unitDetail.lease_start);
+              const end=new Date(unitDetail.lease_end);
+              const baseRent=parseFloat(unitDetail.monthly_rent)||0;
+              const esc=(parseFloat(unitDetail.escalation_rate)||0)/100;
+              const months=[];
+              let cur=new Date(start.getFullYear(),start.getMonth(),1);
+              const endMonth=new Date(end.getFullYear(),end.getMonth(),1);
+              while(cur<=endMonth){
+                const yearsSinceStart=cur.getFullYear()-start.getFullYear()+
+                  (cur.getMonth()<start.getMonth()?-1:0);
+                const escalationYears=Math.max(0,yearsSinceStart);
+                const rent=esc>0?baseRent*Math.pow(1+esc,escalationYears):baseRent;
+                months.push({date:new Date(cur),rent:rent,year:escalationYears});
+                cur=new Date(cur.getFullYear(),cur.getMonth()+1,1);
+              }
+              // Group by year for display
+              const years={};
+              months.forEach(m=>{
+                const yr=m.date.getFullYear();
+                if(!years[yr]){years[yr]={months:[],totalRent:0,rent:m.rent};}
+                years[yr].months.push(m);
+                years[yr].totalRent+=m.rent;
+              });
+              const [scheduleTab,setScheduleTab]=React.useState("yearly");
+              return(
+                <div style={{marginTop:16,borderTop:`1px solid ${QB.borderLight}`,paddingTop:14}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                    <div style={{fontSize:13,fontWeight:600,color:QB.textPrimary}}>💰 Payment Schedule</div>
+                    <div style={{display:"flex",gap:0,border:`1px solid ${QB.borderCard}`,borderRadius:QB.radiusMD,overflow:"hidden"}}>
+                      {["yearly","monthly"].map(t=>(
+                        <button key={t} onClick={()=>setScheduleTab(t)}
+                          style={{padding:"4px 12px",fontSize:11,fontWeight:scheduleTab===t?600:400,background:scheduleTab===t?QB.blue:"transparent",color:scheduleTab===t?"#fff":QB.textMuted,border:"none",cursor:"pointer",fontFamily:QB.fontFamily}}>
+                          {t==="yearly"?"By Year":"Monthly"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{maxHeight:240,overflowY:"auto",borderRadius:QB.radiusMD,border:`1px solid ${QB.borderLight}`}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                      <thead style={{position:"sticky",top:0,background:QB.bgSidebar}}>
+                        <tr>
+                          {scheduleTab==="yearly"
+                            ?["Year","Period","Monthly Rent","Annual Total"].map(h=><th key={h} style={{padding:"7px 10px",textAlign:"left",fontSize:10,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".06em",borderBottom:`1px solid ${QB.borderLight}`}}>{h}</th>)
+                            :["Month","Monthly Rent","Cumulative"].map(h=><th key={h} style={{padding:"7px 10px",textAlign:"left",fontSize:10,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".06em",borderBottom:`1px solid ${QB.borderLight}`}}>{h}</th>)
+                          }
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {scheduleTab==="yearly"
+                          ?Object.entries(years).map(([yr,data],i)=>(
+                            <tr key={yr} style={{background:i%2===0?QB.bgCard:QB.bgSidebar,borderBottom:`1px solid ${QB.borderLight}`}}>
+                              <td style={{padding:"7px 10px",fontWeight:600,color:QB.textPrimary}}>{yr}</td>
+                              <td style={{padding:"7px 10px",color:QB.textMuted,fontSize:11}}>
+                                {new Date(data.months[0].date).toLocaleDateString("en-GB",{month:"short",year:"numeric"})}
+                                {" – "}
+                                {new Date(data.months[data.months.length-1].date).toLocaleDateString("en-GB",{month:"short",year:"numeric"})}
+                              </td>
+                              <td style={{padding:"7px 10px",color:QB.green,fontWeight:600}}>EGP {fmtShort(data.rent)}</td>
+                              <td style={{padding:"7px 10px",color:QB.textSecondary,fontWeight:600}}>EGP {fmtShort(data.totalRent)}</td>
+                            </tr>
+                          ))
+                          :(()=>{
+                            let cum=0;
+                            return months.map((m,i)=>{
+                              cum+=m.rent;
+                              const isNow=m.date.getFullYear()===new Date().getFullYear()&&m.date.getMonth()===new Date().getMonth();
+                              return(
+                                <tr key={i} style={{background:isNow?QB.blueLight:i%2===0?QB.bgCard:QB.bgSidebar,borderBottom:`1px solid ${QB.borderLight}`}}>
+                                  <td style={{padding:"7px 10px",fontWeight:isNow?600:400,color:isNow?QB.blue:QB.textPrimary}}>
+                                    {m.date.toLocaleDateString("en-GB",{month:"short",year:"numeric"})}
+                                    {isNow&&<span style={{fontSize:9,background:QB.blue,color:"#fff",borderRadius:6,padding:"1px 5px",marginLeft:5}}>Now</span>}
+                                  </td>
+                                  <td style={{padding:"7px 10px",color:QB.green,fontWeight:600}}>EGP {fmtShort(m.rent)}</td>
+                                  <td style={{padding:"7px 10px",color:QB.textMuted}}>EGP {fmtShort(cum)}</td>
+                                </tr>
+                              );
+                            });
+                          })()
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{marginTop:8,display:"flex",justifyContent:"space-between",fontSize:11,color:QB.textMuted}}>
+                    <span>{months.length} months total</span>
+                    <span style={{fontWeight:600,color:QB.textPrimary}}>Total: EGP {fmtShort(months.reduce((a,m)=>a+m.rent,0))}</span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>}
 
