@@ -157,6 +157,9 @@ export default function Portal(){
   const[rrTabLeases,setRrTabLeases]=useState([]);
   const[rrTabLoading,setRrTabLoading]=useState(false);
   const[rrTabMonth,setRrTabMonth]=useState("");
+  const[rrHistory,setRrHistory]=useState([]);
+  const[rrHistoryProp,setRrHistoryProp]=useState("");
+  const[showRrHistory,setShowRrHistory]=useState(false);
   const[rrTabMonthly,setRrTabMonthly]=useState([]);
   const[rrTabMonths,setRrTabMonths]=useState([]);
   const[rrMonthlyLoading,setRrMonthlyLoading]=useState(false);
@@ -435,6 +438,12 @@ export default function Portal(){
     if(params.length) url+="?"+params.join("&");
     const d=await apiFetch(url);
     if(d) setCustomers(d);
+  };
+
+  const loadRrHistory=async(propId)=>{
+    if(!propId) return;
+    const d=await apiFetch(`/rent-roll/${propId}/history`);
+    if(d) setRrHistory(d);
   };
 
   const loadRentRollMonthly=async(propId, month)=>{
@@ -1675,6 +1684,74 @@ export default function Portal(){
 
           return(
             <div>
+              {/* Upload History Log */}
+              <div style={{...s.card,marginBottom:16}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:showRrHistory?16:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:12}}>
+                    <div style={s.cardTitle}>📋 Upload Log</div>
+                    <select style={{...s.input,width:160,fontSize:12}} value={rrHistoryProp}
+                      onChange={e=>{setRrHistoryProp(e.target.value);if(e.target.value){loadRrHistory(parseInt(e.target.value));setShowRrHistory(true);}else{setShowRrHistory(false);}}}>
+                      <option value="">Select property...</option>
+                      {Object.keys(rentRolls).map(pid=>{
+                        const prop=properties.find(p=>p.id===parseInt(pid));
+                        return prop?<option key={pid} value={pid}>{prop.name}</option>:null;
+                      })}
+                    </select>
+                  </div>
+                  {showRrHistory&&<button style={{...s.btnS,padding:"4px 10px",fontSize:12}} onClick={()=>setShowRrHistory(false)}>Hide ▲</button>}
+                </div>
+                {showRrHistory&&rrHistory.length>0&&(
+                  <div style={{overflowX:"auto"}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                      <thead><tr style={{background:QB.bgSidebar}}>
+                        {["Sub-location","Report Date","Upload Date","By","Leases","GLA m²","Ann. Rent","Monthly Rent","Monthly SC","<1yr","Changes"].map(h=>(
+                          <th key={h} style={{...s.th,whiteSpace:"nowrap"}}>{h}</th>
+                        ))}
+                      </tr></thead>
+                      <tbody>
+                        {rrHistory.map((h,i)=>{
+                          const isLatest=h.is_latest;
+                          return(
+                            <tr key={h.id} style={{background:isLatest?QB.blueLight:i%2===0?QB.bgCard:QB.bgSidebar,borderBottom:`1px solid ${QB.borderLight}`}}>
+                              <td style={{...s.td,fontWeight:isLatest?700:400,color:isLatest?QB.blue:QB.textPrimary}}>
+                                {h.sub_location||"—"}
+                                {isLatest&&<span style={{fontSize:10,background:QB.blue,color:"#fff",borderRadius:8,padding:"1px 6px",marginLeft:6}}>Latest</span>}
+                              </td>
+                              <td style={{...s.td,color:QB.textSecondary,whiteSpace:"nowrap"}}>{h.report_date||"—"}</td>
+                              <td style={{...s.td,color:QB.textMuted,fontSize:11,whiteSpace:"nowrap"}}>
+                                {h.upload_date?new Date(h.upload_date).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—"}
+                              </td>
+                              <td style={{...s.td,color:QB.textSecondary}}>{h.uploaded_by_name||"—"}</td>
+                              <td style={{...s.td,textAlign:"right",fontWeight:600}}>{h.active_leases}</td>
+                              <td style={{...s.td,textAlign:"right",color:QB.textSecondary}}>{fmtShort(h.total_gla)}</td>
+                              <td style={{...s.td,textAlign:"right",color:QB.green,fontWeight:600,whiteSpace:"nowrap"}}>EGP {fmtShort(h.annualized_rent)}</td>
+                              <td style={{...s.td,textAlign:"right",color:QB.green,whiteSpace:"nowrap"}}>EGP {fmtShort(h.monthly_rent)}</td>
+                              <td style={{...s.td,textAlign:"right",color:QB.blue,whiteSpace:"nowrap"}}>EGP {fmtShort(h.monthly_sc)}</td>
+                              <td style={{...s.td,textAlign:"center",color:h.expiry_0_1yr>0?"#C80C0F":QB.textMuted,fontWeight:h.expiry_0_1yr>0?700:400}}>{h.expiry_0_1yr}</td>
+                              <td style={s.td}>
+                                {h.delta_leases===null
+                                  ?<span style={{fontSize:10,color:QB.textMuted}}>First upload</span>
+                                  :<div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                                    {h.delta_leases!==0&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:8,background:h.delta_leases>0?"#F0FDF4":"#FEF2F2",color:h.delta_leases>0?"#2CA01C":"#C80C0F",fontWeight:600}}>
+                                      {h.delta_leases>0?"+":""}{h.delta_leases} leases
+                                    </span>}
+                                    {Math.abs(h.delta_rent||0)>1000&&<span style={{fontSize:10,padding:"1px 6px",borderRadius:8,background:h.delta_rent>0?"#F0FDF4":"#FEF2F2",color:h.delta_rent>0?"#2CA01C":"#C80C0F",fontWeight:600}}>
+                                      {h.delta_rent>0?"+":""}EGP {fmtShort(h.delta_rent)}
+                                    </span>}
+                                    {h.delta_leases===0&&Math.abs(h.delta_rent||0)<=1000&&<span style={{fontSize:10,color:QB.textMuted}}>No change</span>}
+                                  </div>
+                                }
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {showRrHistory&&rrHistory.length===0&&<div style={{textAlign:"center",padding:"20px",color:QB.textMuted,fontSize:13}}>No upload history</div>}
+              </div>
+
               {/* Filters */}
               <div style={{...s.card,marginBottom:16}}>
                 <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
