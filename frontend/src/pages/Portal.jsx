@@ -169,7 +169,7 @@ export default function Portal(){
   const[customers,setCustomers]=useState([]);
   const[customerSearch,setCustomerSearch]=useState("");
   const[customerDetail,setCustomerDetail]=useState(null);
-  const[customerForm,setCustomerForm]=useState({brand_name:"",legal_name:"",unit_code:"",unit_type:"",location:"",lease_type:"",property_id:"",sub_location:"",bank_account:"",phone:"",email:"",notes:""});
+  const[customerForm,setCustomerForm]=useState({brand_name:"",legal_name:"",unit_code:"",unit_type:"",location:"",lease_type:"",property_id:"",sub_location:"",bank_account:"",phone:"",email:"",notes:"",tenant_number:"",document_type:"",document_no:""});
   const[showCustomerForm,setShowCustomerForm]=useState(false);
   const[editCustomer,setEditCustomer]=useState(null);
   const[importingCustomers,setImportingCustomers]=useState(false);
@@ -2018,9 +2018,10 @@ export default function Portal(){
                 }}>✕ Clear</button>}
               <button style={{...s.btnS,padding:"8px 14px",fontSize:12,display:"flex",alignItems:"center",gap:4}} onClick={()=>{
                 const toExport=filteredCustomers;
-                const headers=["Brand Name","Legal Name","Unit Code","Unit Type","Location","Sub-location","Property","Lease Type","Bank Account","Phone","Email","Notes","Source"];
+                const headers=["Brand Name","Legal Name","Tenant Number","Document Type","Document No.","Unit Code","Unit Type","Location","Sub-location","Property","Lease Type","Bank Account","Phone","Email","Notes","Source"];
                 const rows=toExport.map(c=>[
-                  c.brand_name||"",c.legal_name||"",c.unit_code||"",c.unit_type||"",
+                  c.brand_name||"",c.legal_name||"",c.tenant_number||"",
+                  c.document_type||"",c.document_no||"",c.unit_code||"",c.unit_type||"",
                   c.location||"",c.sub_location||"",c.property_name||"",
                   c.lease_type||"",c.bank_account||"",c.phone||"",c.email||"",
                   c.notes||"",c.source||""
@@ -2052,7 +2053,7 @@ export default function Portal(){
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                   <thead>
                     <tr style={{background:QB.bgSidebar}}>
-                      {["Brand","Legal Name","Unit","Type","Location","Sub-location","Property","Source",""].map(h=>(
+                      {["Brand","Legal Name","Tenant No.","Doc Type","Doc No.","Unit","Type","Location","Sub-location","Property","Source",""].map(h=>(
                         <th key={h} style={s.th}>{h}</th>
                       ))}
                     </tr>
@@ -2064,7 +2065,10 @@ export default function Portal(){
                         onMouseEnter={e=>e.currentTarget.style.background=QB.blueLight}
                         onMouseLeave={e=>e.currentTarget.style.background=i%2===0?QB.bgCard:QB.bgSidebar}>
                         <td style={{...s.td,fontWeight:600,color:QB.textPrimary}}>{c.brand_name}</td>
-                        <td style={{...s.td,color:QB.textSecondary,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.legal_name||"—"}</td>
+                        <td style={{...s.td,color:QB.textSecondary,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.legal_name||"—"}</td>
+                        <td style={{...s.td,color:QB.textMuted,fontSize:11}}>{c.tenant_number||"—"}</td>
+                        <td style={{...s.td,color:QB.textMuted,fontSize:11}}>{c.document_type||"—"}</td>
+                        <td style={{...s.td,color:QB.textMuted,fontSize:11,fontFamily:"monospace"}}>{c.document_no||"—"}</td>
                         <td style={{...s.td,color:QB.textSecondary}}>{c.unit_code||"—"}</td>
                         <td style={s.td}>{c.unit_type?<Badge label={c.unit_type} color="gray"/>:"—"}</td>
                         <td style={{...s.td,color:QB.textSecondary}}>{c.location||"—"}</td>
@@ -2720,6 +2724,9 @@ export default function Portal(){
                 {label:"Location",value:customerDetail.location||customerDetail.sub_location},
                 {label:"Lease Type",value:customerDetail.lease_type},
                 {label:"Property",value:customerDetail.property_name},
+                {label:"Tenant Number",value:customerDetail.tenant_number},
+                {label:"Document Type",value:customerDetail.document_type},
+                {label:"Document No.",value:customerDetail.document_no},
                 {label:"Bank Account",value:customerDetail.bank_account},
                 {label:"Phone",value:customerDetail.phone},
                 {label:"Email",value:customerDetail.email},
@@ -2778,8 +2785,17 @@ export default function Portal(){
               <div><label style={s.label}>Lease Type</label>
                 <input style={s.input} value={customerForm.lease_type} onChange={e=>setCustomerForm(f=>({...f,lease_type:e.target.value}))} placeholder="e.g. Retail, Offices"/>
               </div>
+              <div><label style={s.label}>Tenant Number</label>
+                <input style={s.input} value={customerForm.tenant_number||""} onChange={e=>setCustomerForm(f=>({...f,tenant_number:e.target.value}))} placeholder="Oracle tenant number"/>
+              </div>
+              <div><label style={s.label}>Document Type</label>
+                <input style={s.input} value={customerForm.document_type||""} onChange={e=>setCustomerForm(f=>({...f,document_type:e.target.value}))} placeholder="e.g. Lease, License"/>
+              </div>
+              <div><label style={s.label}>Document No.</label>
+                <input style={s.input} value={customerForm.document_no||""} onChange={e=>setCustomerForm(f=>({...f,document_no:e.target.value}))} placeholder="Contract/document number"/>
+              </div>
               <div><label style={s.label}>Bank Account</label>
-                <input style={s.input} value={customerForm.bank_account} onChange={e=>setCustomerForm(f=>({...f,bank_account:e.target.value}))} placeholder="Remittance account"/>
+                <input style={s.input} value={customerForm.bank_account||""} onChange={e=>setCustomerForm(f=>({...f,bank_account:e.target.value}))} placeholder="Remittance account"/>
               </div>
               <div><label style={s.label}>Phone</label>
                 <input style={s.input} value={customerForm.phone} onChange={e=>setCustomerForm(f=>({...f,phone:e.target.value}))}/>
