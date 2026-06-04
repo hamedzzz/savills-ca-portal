@@ -1005,7 +1005,8 @@ async def import_customers(file: UploadFile = File(...),
     return {"ok": True, "added": added, "skipped": skipped, "errors": errors[:5]}
 
 @app.post("/customers/import-from-rent-roll")
-def import_from_rent_roll(property_id: int, current_user=Depends(require_editor)):
+def import_from_rent_roll(property_id: int = None, data: dict = None, current_user=Depends(require_editor)):
+    if data and "property_id" in data: property_id = data["property_id"]
     """Pull customers from existing rent roll leases"""
     conn = get_db(); c = conn.cursor()
     c.execute("""SELECT DISTINCT ON (l.tenant_brand, l.unit_code)
