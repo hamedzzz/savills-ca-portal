@@ -101,6 +101,8 @@ def init_db():
         upload_id INTEGER NOT NULL REFERENCES rent_roll_uploads(id) ON DELETE CASCADE,
         property_id INTEGER NOT NULL REFERENCES properties(id),
         document_no TEXT DEFAULT '',
+        document_type TEXT DEFAULT '',
+        tenant_number TEXT DEFAULT '',
         tenant_brand TEXT DEFAULT '',
         tenant_legal TEXT DEFAULT '',
         unit_code TEXT DEFAULT '',
@@ -191,6 +193,8 @@ def init_db():
     safe_exec(c, conn, "ALTER TABLE collection_logs ADD CONSTRAINT collection_logs_property_month UNIQUE (property_id, month)")
     safe_exec(c, conn, "DELETE FROM properties WHERE id NOT IN (SELECT MIN(id) FROM properties GROUP BY name)")
     safe_exec(c, conn, "ALTER TABLE rent_roll_uploads ADD COLUMN IF NOT EXISTS sub_location TEXT DEFAULT ''")
+    safe_exec(c, conn, "ALTER TABLE rent_roll_leases ADD COLUMN IF NOT EXISTS document_type TEXT DEFAULT ''")
+    safe_exec(c, conn, "ALTER TABLE rent_roll_leases ADD COLUMN IF NOT EXISTS tenant_number TEXT DEFAULT ''")
     safe_exec(c, conn, """CREATE INDEX IF NOT EXISTS idx_rrm_lease_month ON rent_roll_monthly(lease_id, month)""")
     safe_exec(c, conn, """CREATE INDEX IF NOT EXISTS idx_rrm_upload_month ON rent_roll_monthly(upload_id, month)""")
     safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS tenant_number TEXT DEFAULT ''")
@@ -751,9 +755,12 @@ async def upload_rent_roll(property_id: int = Form(...), sub_location: str = For
         lease_start = row.get('Lease Start'); lease_end = row.get('Lease End')
         if pd.isna(lease_start): lease_start = None
         if pd.isna(lease_end): lease_end = None
-        c.execute("""INSERT INTO rent_roll_leases (upload_id,property_id,document_no,tenant_brand,tenant_legal,unit_code,unit_type,floor,gla,lease_start,lease_end,remaining_years,remaining_months,annualized_rent,annualized_sc,monthly_rent,rent_per_sqm,sc_per_sqm,escalation_rate,revenue_sharing_rate,security_deposit)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (upload_id, property_id, str(gv('Document No','')), str(gv('Tenant Brand Name','')), str(gv('Tenant Legal Name','')),
+        c.execute("""INSERT INTO rent_roll_leases (upload_id,property_id,document_no,document_type,tenant_number,tenant_brand,tenant_legal,unit_code,unit_type,floor,gla,lease_start,lease_end,remaining_years,remaining_months,annualized_rent,annualized_sc,monthly_rent,rent_per_sqm,sc_per_sqm,escalation_rate,revenue_sharing_rate,security_deposit)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (upload_id, property_id,
+             str(gv('Document No','')), str(gv('Document Type','')),
+             str(int(gv('Tenant Number',0))) if gv('Tenant Number',0) else '',
+             str(gv('Tenant Brand Name','')), str(gv('Tenant Legal Name','')),
              str(gv('Unit Code','')), str(gv('Unit Type','')), str(gv('Floor Number','')), float(gv('GLA',0)),
              lease_start, lease_end, float(gv('Remaining Years',0)), float(gv('Remaining Months',0)),
              float(gv('Annualized Rent',0)), ann_sc, monthly, float(gv('Indoor Rent Per Sqm',0)), sc_sqm,
@@ -1019,7 +1026,7 @@ def import_from_rent_roll(property_id: int = None, data: dict = None, current_us
     conn = get_db(); c = conn.cursor()
     c.execute("""SELECT DISTINCT ON (l.tenant_brand, l.unit_code)
                  l.tenant_brand, l.tenant_legal, l.unit_code, l.unit_type,
-                 l.document_no, l.revenue_sharing_rate,
+                 l.document_no, l.document_type, l.tenant_number, l.revenue_sharing_rate,
                  u.sub_location, u.property_id
                  FROM rent_roll_leases l
                  JOIN rent_roll_uploads u ON l.upload_id=u.id
@@ -1040,7 +1047,7 @@ def import_from_rent_roll(property_id: int = None, data: dict = None, current_us
         prop_id   = l["property_id"]
 
         # Check if exists
-        c.execute("""SELECT id, legal_name, document_no, unit_type, sub_location, property_id
+        c.execute("""SELECT id, legal_name, document_no, document_type, tenant_number, unit_type, sub_location, property_id
                      FROM customers WHERE brand_name ILIKE %s AND unit_code ILIKE %s""",
                   (brand, unit))
         existing = c.fetchone()
@@ -1052,6 +1059,10 @@ def import_from_rent_roll(property_id: int = None, data: dict = None, current_us
                 updates["legal_name"] = legal
             if not existing["document_no"] and doc_no:
                 updates["document_no"] = doc_no
+            if not existing.get("document_type") and l.get("document_type"):
+                updates["document_type"] = l["document_type"]
+            if not existing.get("tenant_number") and l.get("tenant_number"):
+                updates["tenant_number"] = str(l["tenant_number"])
             if not existing["unit_type"] and unit_type:
                 updates["unit_type"] = unit_type
             if not existing["sub_location"] and sub_loc:
@@ -1071,9 +1082,10 @@ def import_from_rent_roll(property_id: int = None, data: dict = None, current_us
             # Insert new
             c.execute("""INSERT INTO customers
                 (brand_name,legal_name,unit_code,unit_type,sub_location,property_id,
-                 document_no,source)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
-                (brand, legal, unit, unit_type, sub_loc, prop_id, doc_no, "rent_roll"))
+                 document_no,document_type,tenant_number,source)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (brand, legal, unit, unit_type, sub_loc, prop_id, doc_no,
+                 l.get("document_type") or "", str(l.get("tenant_number") or ""), "rent_roll"))
             added += 1
 
     log_activity(conn, current_user["id"], "imported from rent roll", "customer",
