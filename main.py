@@ -193,6 +193,9 @@ def init_db():
     safe_exec(c, conn, "ALTER TABLE rent_roll_uploads ADD COLUMN IF NOT EXISTS sub_location TEXT DEFAULT ''")
     safe_exec(c, conn, """CREATE INDEX IF NOT EXISTS idx_rrm_lease_month ON rent_roll_monthly(lease_id, month)""")
     safe_exec(c, conn, """CREATE INDEX IF NOT EXISTS idx_rrm_upload_month ON rent_roll_monthly(upload_id, month)""")
+    safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS tenant_number TEXT DEFAULT ''")
+    safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS document_type TEXT DEFAULT ''")
+    safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS document_no TEXT DEFAULT ''")
     conn.commit()
 
     default_settings = [
@@ -862,8 +865,9 @@ def list_customers(search: str = None, property_id: int = None,
            LEFT JOIN properties p ON c.property_id=p.id WHERE 1=1"""
     params = []
     if search:
-        q += " AND (c.brand_name ILIKE %s OR c.legal_name ILIKE %s OR c.unit_code ILIKE %s)"
-        params += [f"%{search}%", f"%{search}%", f"%{search}%"]
+        q += """ AND (c.brand_name ILIKE %s OR c.legal_name ILIKE %s OR c.unit_code ILIKE %s
+                  OR c.tenant_number ILIKE %s OR c.document_no ILIKE %s OR c.document_type ILIKE %s)"""
+        params += [f"%{search}%"]*6
     if property_id:
         q += " AND c.property_id=%s"; params.append(property_id)
     q += " ORDER BY c.brand_name ASC LIMIT 500"
@@ -892,14 +896,17 @@ def create_customer(data: dict, current_user=Depends(require_editor)):
         conn.close(); raise HTTPException(409, f"Customer '{brand}' with unit '{unit}' already exists")
     c.execute("""INSERT INTO customers
         (brand_name,legal_name,unit_code,unit_type,location,lease_type,property_id,
-         sub_location,bank_account,phone,email,notes,source)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+         sub_location,bank_account,phone,email,notes,source,
+         tenant_number,document_type,document_no)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
         (brand, data.get("legal_name",""), unit,
          data.get("unit_type",""), data.get("location",""),
          data.get("lease_type",""), data.get("property_id") or None,
          data.get("sub_location",""), data.get("bank_account",""),
          data.get("phone",""), data.get("email",""),
-         data.get("notes",""), data.get("source","manual")))
+         data.get("notes",""), data.get("source","manual"),
+         data.get("tenant_number",""), data.get("document_type",""),
+         data.get("document_no","")))
     new_id = c.fetchone()["id"]
     log_activity(conn, current_user["id"], "added customer", "customer", brand)
     conn.commit(); conn.close(); return {"id": new_id}
@@ -909,7 +916,8 @@ def update_customer(customer_id: int, data: dict, current_user=Depends(require_e
     conn = get_db(); c = conn.cursor()
     allowed = {k: v for k, v in data.items() if k in (
         "brand_name","legal_name","unit_code","unit_type","location","lease_type",
-        "property_id","sub_location","bank_account","phone","email","notes")}
+        "property_id","sub_location","bank_account","phone","email","notes",
+        "tenant_number","document_type","document_no")}
     if not allowed: raise HTTPException(400, "Nothing to update")
     allowed["updated_at"] = datetime.utcnow()
     set_clause = ", ".join(f"{k}=%s" for k in allowed)
@@ -1026,11 +1034,13 @@ def import_from_rent_roll(property_id: int = None, data: dict = None, current_us
                   (brand, unit))
         if c.fetchone(): skipped += 1; continue
         c.execute("""INSERT INTO customers
-            (brand_name,legal_name,unit_code,unit_type,sub_location,property_id,source)
-            VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+            (brand_name,legal_name,unit_code,unit_type,sub_location,property_id,source,
+             document_no,document_type)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
             (brand, l["tenant_legal"] or "", unit,
              l["unit_type"] or "", l["sub_location"] or "",
-             l["property_id"], "rent_roll"))
+             l["property_id"], "rent_roll",
+             l.get("document_no") or "", ""))
         added += 1
     log_activity(conn, current_user["id"], "imported from rent roll", "customer",
                  str(property_id), f"added={added} skipped={skipped}")
