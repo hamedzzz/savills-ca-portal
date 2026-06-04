@@ -170,6 +170,7 @@ export default function Portal(){
 
   const[adminMenuOpen,setAdminMenuOpen]=useState(false);
   const[unitDetail,setUnitDetail]=useState(null);
+  const[scheduleTab,setScheduleTab]=useState("yearly");
   const[customers,setCustomers]=useState([]);
   const[customerSearch,setCustomerSearch]=useState("");
   const[customerDetail,setCustomerDetail]=useState(null);
@@ -2824,7 +2825,6 @@ export default function Portal(){
                 years[yr].months.push(m);
                 years[yr].totalRent+=m.rent;
               });
-              const [scheduleTab,setScheduleTab]=useState("yearly");
               return(
                 <div style={{marginTop:16,borderTop:`1px solid ${QB.borderLight}`,paddingTop:14}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
