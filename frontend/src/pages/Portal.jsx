@@ -175,6 +175,7 @@ export default function Portal(){
   const[importingCustomers,setImportingCustomers]=useState(false);
   const[customerFilterProp,setCustomerFilterProp]=useState("");
   const[customerFilterSub,setCustomerFilterSub]=useState("");
+  const[customerFilterType,setCustomerFilterType]=useState("");
   const[selectedLease,setSelectedLease]=useState(null);
   const[showProfile,setShowProfile]=useState(false);
   const[profileForm,setProfileForm]=useState({full_name:"",email:"",title:""});
@@ -1996,14 +1997,24 @@ export default function Portal(){
                   </select>
                 </div>:null;
               })()}
+              {(()=>{
+                const types=[...new Set(customers.map(c=>c.unit_type).filter(Boolean))].sort();
+                return types.length>0?<div>
+                  <label style={{...s.label,marginBottom:3}}>Unit Type</label>
+                  <select style={{...s.input,width:140}} value={customerFilterType} onChange={e=>setCustomerFilterType(e.target.value)}>
+                    <option value="">All types</option>
+                    {types.map(t=><option key={t}>{t}</option>)}
+                  </select>
+                </div>:null;
+              })()}
               <div style={{flex:1,minWidth:200}}>
                 <label style={{...s.label,marginBottom:3}}>Search</label>
                 <input style={s.input} placeholder="🔍 Brand, legal name, or unit..."
                   value={customerSearch} onChange={e=>{setCustomerSearch(e.target.value);loadCustomers(e.target.value,customerFilterProp);}}/>
               </div>
-              {(customerSearch||customerFilterProp||customerFilterSub)&&
+              {(customerSearch||customerFilterProp||customerFilterSub||customerFilterType)&&
                 <button style={{...s.btnS,padding:"8px 12px",fontSize:12}} onClick={()=>{
-                  setCustomerSearch("");setCustomerFilterProp("");setCustomerFilterSub("");loadCustomers("");
+                  setCustomerSearch("");setCustomerFilterProp("");setCustomerFilterSub("");setCustomerFilterType("");loadCustomers("");
                 }}>✕ Clear</button>}
               <button style={{...s.btnS,padding:"8px 14px",fontSize:12,display:"flex",alignItems:"center",gap:4}} onClick={()=>{
                 const toExport=filteredCustomers;
@@ -2028,6 +2039,7 @@ export default function Portal(){
           {(()=>{
             const filteredCustomers=customers.filter(c=>{
               if(customerFilterSub&&(c.sub_location||"")!==customerFilterSub) return false;
+              if(customerFilterType&&(c.unit_type||"")!==customerFilterType) return false;
               return true;
             });
             return(
