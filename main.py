@@ -1015,37 +1015,71 @@ async def import_customers(file: UploadFile = File(...),
 @app.post("/customers/import-from-rent-roll")
 def import_from_rent_roll(property_id: int = None, data: dict = None, current_user=Depends(require_editor)):
     if data and "property_id" in data: property_id = data["property_id"]
-    """Pull customers from existing rent roll leases"""
+    """Pull customers from rent roll — insert new, update existing with missing fields"""
     conn = get_db(); c = conn.cursor()
     c.execute("""SELECT DISTINCT ON (l.tenant_brand, l.unit_code)
                  l.tenant_brand, l.tenant_legal, l.unit_code, l.unit_type,
+                 l.document_no, l.revenue_sharing_rate,
                  u.sub_location, u.property_id
                  FROM rent_roll_leases l
                  JOIN rent_roll_uploads u ON l.upload_id=u.id
                  WHERE u.property_id=%s AND l.tenant_brand IS NOT NULL
                  ORDER BY l.tenant_brand, l.unit_code, u.upload_date DESC""", (property_id,))
     leases = c.fetchall()
-    added = 0; skipped = 0
+    added = 0; updated = 0; skipped = 0
+
     for l in leases:
         brand = (l["tenant_brand"] or "").strip()
-        unit = (l["unit_code"] or "").strip()
+        unit  = (l["unit_code"] or "").strip()
         if not brand: continue
-        c.execute("SELECT id FROM customers WHERE brand_name ILIKE %s AND unit_code ILIKE %s",
+
+        doc_no    = (l["document_no"] or "").strip()
+        legal     = (l["tenant_legal"] or "").strip()
+        unit_type = (l["unit_type"] or "").strip()
+        sub_loc   = (l["sub_location"] or "").strip()
+        prop_id   = l["property_id"]
+
+        # Check if exists
+        c.execute("""SELECT id, legal_name, document_no, unit_type, sub_location, property_id
+                     FROM customers WHERE brand_name ILIKE %s AND unit_code ILIKE %s""",
                   (brand, unit))
-        if c.fetchone(): skipped += 1; continue
-        c.execute("""INSERT INTO customers
-            (brand_name,legal_name,unit_code,unit_type,sub_location,property_id,source,
-             document_no,document_type)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (brand, l["tenant_legal"] or "", unit,
-             l["unit_type"] or "", l["sub_location"] or "",
-             l["property_id"], "rent_roll",
-             l.get("document_no") or "", ""))
-        added += 1
+        existing = c.fetchone()
+
+        if existing:
+            # Build update: only fill in fields that are currently empty
+            updates = {}
+            if not existing["legal_name"] and legal:
+                updates["legal_name"] = legal
+            if not existing["document_no"] and doc_no:
+                updates["document_no"] = doc_no
+            if not existing["unit_type"] and unit_type:
+                updates["unit_type"] = unit_type
+            if not existing["sub_location"] and sub_loc:
+                updates["sub_location"] = sub_loc
+            if not existing["property_id"] and prop_id:
+                updates["property_id"] = prop_id
+
+            if updates:
+                updates["updated_at"] = datetime.utcnow()
+                set_clause = ", ".join(f"{k}=%s" for k in updates)
+                c.execute(f"UPDATE customers SET {set_clause} WHERE id=%s",
+                         (*updates.values(), existing["id"]))
+                updated += 1
+            else:
+                skipped += 1
+        else:
+            # Insert new
+            c.execute("""INSERT INTO customers
+                (brand_name,legal_name,unit_code,unit_type,sub_location,property_id,
+                 document_no,source)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (brand, legal, unit, unit_type, sub_loc, prop_id, doc_no, "rent_roll"))
+            added += 1
+
     log_activity(conn, current_user["id"], "imported from rent roll", "customer",
-                 str(property_id), f"added={added} skipped={skipped}")
+                 str(property_id), f"added={added} updated={updated} skipped={skipped}")
     conn.commit(); conn.close()
-    return {"ok": True, "added": added, "skipped": skipped}
+    return {"ok": True, "added": added, "updated": updated, "skipped": skipped}
 
 @app.get("/pbi/embed-token/{report_id}")
 async def get_embed_token(report_id: str, workspace_id: str = PBI_WORKSPACE_ID, current_user=Depends(get_current_user)):
