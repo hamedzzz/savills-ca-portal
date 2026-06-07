@@ -947,7 +947,7 @@ async def upload_invoice_recon(
         df['PS Due Date'] = pd.to_datetime(df['PS Due Date'], errors='coerce')
 
     # Filter element groups
-    relevant = ['Rent','Service Charge','Revenue Sharing','Revenue Sharing ']
+    relevant = ['Rent','Service Charge']
     if 'Element Group' in df.columns:
         df = df[df['Element Group'].isin(relevant)]
 
