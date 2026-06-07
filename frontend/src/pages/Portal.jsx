@@ -166,6 +166,7 @@ export default function Portal(){
   const[reconElement,setReconElement]=useState("");
   const[reconStatus,setReconStatus]=useState("");
   const[reconSearch,setReconSearch]=useState("");
+  const[reconReason,setReconReason]=useState("");
   const[reconLines,setReconLines]=useState([]);
   const[reconSummary,setReconSummary]=useState([]);
   const[reconMonths,setReconMonths]=useState([]);
@@ -1902,11 +1903,21 @@ export default function Portal(){
                         <option value="not_invoiced">❌ Not invoiced</option>
                       </select>
                     </div>
+                    <div>
+                      <label style={s.label}>Reason</label>
+                      <select style={{...s.input,width:160}} value={reconReason} onChange={e=>setReconReason(e.target.value)}>
+                        <option value="">All reasons</option>
+                        <option value="__none__">No comment yet</option>
+                        {["Cancellation","Amendment Request","Missing Tax Data","Grace Period","Under Review","Dispute","Other"].map(r=>(
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                    </div>
                     <div style={{flex:1,minWidth:160}}>
                       <label style={s.label}>Search tenant</label>
                       <input style={s.input} placeholder="Search..." value={reconSearch} onChange={e=>setReconSearch(e.target.value)}/>
                     </div>
-                    {reconSearch&&<button style={{...s.btnS,padding:"8px 10px",fontSize:12}} onClick={()=>setReconSearch("")}>✕</button>}
+                    {(reconSearch||reconReason)&&<button style={{...s.btnS,padding:"8px 10px",fontSize:12}} onClick={()=>{setReconSearch("");setReconReason("");}}>✕ Clear</button>}
                   </div>
                 </div>
 
@@ -1960,14 +1971,21 @@ export default function Portal(){
                 {/* Table */}
                 {reconProp&&reconMonth&&(()=>{
                   const filtered=reconLines.filter(l=>{
-                    if(!reconSearch) return true;
-                    const q=reconSearch.toLowerCase();
-                    return (l.brand||"").toLowerCase().includes(q)||(l.customer_name||"").toLowerCase().includes(q)||(l.unit||"").toLowerCase().includes(q);
+                    if(reconSearch){
+                      const q=reconSearch.toLowerCase();
+                      if(!(l.brand||"").toLowerCase().includes(q)&&!(l.customer_name||"").toLowerCase().includes(q)&&!(l.unit||"").toLowerCase().includes(q)) return false;
+                    }
+                    if(reconReason){
+                      if(reconReason==="__none__") return l.ps_invoiced_flag==="N"&&!l.reason;
+                      return (l.reason||"")===reconReason;
+                    }
+                    return true;
                   });
                   const exportExcel=()=>{
-                    const headers=["Brand","Customer Name","Unit","Unit Type","Element Group","Expected (EGP)","Invoiced (EGP)","Invoice No.","Status","Reason","Notes"];
+                    const headers=["Brand","Customer Name","Unit","Unit Type","Location","Element Group","Due Date","Expected (EGP)","Invoiced (EGP)","Invoice No.","Status","Reason","Notes"];
+                    const fmtDt=d=>d?new Date(d).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"";
                     const rows=filtered.map(l=>[
-                      l.brand||"",l.customer_name||"",l.unit||"",l.unit_type||"",l.element_group||"",
+                      l.brand||"",l.customer_name||"",l.unit||"",l.unit_type||"",l.sub_location||"",l.element_group||"",fmtDt(l.ps_due_date),
                       parseFloat(l.ps_amount||0).toFixed(2),
                       parseFloat(l.ps_revenue_amount||0).toFixed(2),
                       l.invoice_no||"",
@@ -1994,7 +2012,7 @@ export default function Portal(){
                           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                             <thead style={{position:"sticky",top:0,zIndex:5}}>
                               <tr style={{background:QB.bgSidebar}}>
-                                {["Brand","Unit","Location","Element","Expected","Invoiced","Invoice No.","Status","Comment"].map(h=>(
+                                {["Brand","Unit","Location","Element","Due Date","Expected","Invoiced","Invoice No.","Status","Comment"].map(h=>(
                                   <th key={h} style={{padding:"9px 10px",textAlign:"left",fontSize:10,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".06em",borderBottom:`2px solid ${QB.borderCard}`,whiteSpace:"nowrap"}}>{h}</th>
                                 ))}
                               </tr>
@@ -2010,6 +2028,7 @@ export default function Portal(){
                                     <td style={{padding:"8px 10px",fontWeight:600,color:QB.textPrimary,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.brand||l.customer_name||"—"}</td>
                                     <td style={{padding:"8px 10px",color:QB.textSecondary,whiteSpace:"nowrap"}}>{l.unit||"—"}</td>
                                     <td style={{padding:"8px 10px",color:QB.textMuted,fontSize:11,whiteSpace:"nowrap"}}>{l.sub_location||"—"}</td>
+                                    <td style={{padding:"8px 10px",color:QB.textMuted,fontSize:11,whiteSpace:"nowrap"}}>{l.ps_due_date?new Date(l.ps_due_date).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—"}</td>
                                     <td style={{padding:"8px 10px"}}><span style={{padding:"2px 7px",borderRadius:10,fontSize:10,background:l.element_group==="Rent"?QB.blueLight:QB.bgSidebar,color:l.element_group==="Rent"?QB.blue:QB.textSecondary,border:`1px solid ${l.element_group==="Rent"?QB.blue+"33":QB.borderLight}`}}>{l.element_group||"—"}</span></td>
                                     <td style={{padding:"8px 10px",textAlign:"right",color:QB.textPrimary,fontWeight:500,whiteSpace:"nowrap"}}>EGP {fmtShort(l.ps_amount)}</td>
                                     <td style={{padding:"8px 10px",textAlign:"right",fontWeight:600,color:invoiced?QB.green:"#C80C0F",whiteSpace:"nowrap"}}>{invoiced?`EGP ${fmtShort(l.ps_revenue_amount)}`:"—"}</td>
