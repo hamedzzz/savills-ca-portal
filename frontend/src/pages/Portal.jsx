@@ -471,14 +471,17 @@ export default function Portal(){
   const loadReconLines=async(propId, month, sub, elem, status)=>{
     if(!propId) return;
     setReconLoading(true);
-    let url=`/invoice-recon/lines?property_id=${propId}`;
-    if(month) url+=`&report_month=${month}`;
-    if(sub) url+=`&sub_location=${encodeURIComponent(sub)}`;
-    if(elem) url+=`&element_group=${encodeURIComponent(elem)}`;
-    if(status) url+=`&status=${status}`;
-    const d=await apiFetch(url);
-    if(d) setReconLines(d);
-    setReconLoading(false);
+    try{
+      let url=`/invoice-recon/lines?property_id=${propId}`;
+      if(month) url+=`&report_month=${month}`;
+      if(sub) url+=`&sub_location=${encodeURIComponent(sub)}`;
+      if(elem) url+=`&element_group=${encodeURIComponent(elem)}`;
+      if(status) url+=`&status=${status}`;
+      const d=await apiFetch(url);
+      if(d) setReconLines(d);
+      else setReconLines([]);
+    }catch(e){setReconLines([]);}
+    finally{setReconLoading(false);}
   };
 
   const loadReconSummary=async(propId, month, sub)=>{
@@ -492,10 +495,10 @@ export default function Portal(){
 
   const loadReconMonths=async(propId)=>{
     if(!propId) return;
-    const d=await apiFetch(`/invoice-recon/months?property_id=${propId}`);
-    if(d){
-      setReconMonths(d);
-      if(d.length>0&&!reconMonth){setReconMonth(d[0].report_month);}
+    const d=await apiFetch(`/invoice-recon/available-months?property_id=${propId}`);
+    if(d&&d.length>0){
+      // d is array of "YYYY-MM" strings
+      setReconMonths(d.map(m=>({report_month:m,sub_location:""})));
     }
   };
 
@@ -1876,16 +1879,16 @@ export default function Portal(){
                     </div>
                     <div>
                       <label style={s.label}>Month</label>
-                      <select style={{...s.input,width:150,color:QB.blue,fontWeight:600,borderColor:QB.blue}} value={reconMonth+(reconSub?"|"+reconSub:"|")} onChange={e=>{
-                        const [month,sub]=(e.target.value||"").split("|");
-                        setReconMonth(month||""); setReconSub(sub||"");
-                        if(reconProp&&month){
-                          loadReconLines(reconProp,month,sub||"",reconElement,reconStatus);
-                          loadReconSummary(reconProp,month,sub||"");
+                      <select style={{...s.input,width:160,color:reconMonth?QB.blue:QB.textMuted,fontWeight:reconMonth?600:400,borderColor:reconMonth?QB.blue:QB.borderInput}} value={reconMonth} onChange={e=>{
+                        const month=e.target.value;
+                        setReconMonth(month);
+                        if(reconProp){
+                          loadReconLines(reconProp,month,reconSub,reconElement,reconStatus);
+                          loadReconSummary(reconProp,month,reconSub);
                         }
                       }}>
-                        <option value="">Select month...</option>
-                        {reconMonths.map(m=><option key={m.report_month+m.sub_location} value={`${m.report_month}|${m.sub_location||""}`}>{fmtMonth(m.report_month)} {m.sub_location?`· ${m.sub_location}`:""}</option>)}
+                        <option value="">All months (YTD)</option>
+                        {reconMonths.map(m=><option key={m.report_month} value={m.report_month}>{fmtMonth(m.report_month)}</option>)}
                       </select>
                     </div>
                     <div>
@@ -2040,8 +2043,8 @@ export default function Portal(){
                                     <td style={{padding:"8px 10px",fontWeight:600,color:QB.textPrimary,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.brand||l.customer_name||"—"}</td>
                                     <td style={{padding:"8px 10px",color:QB.textSecondary,whiteSpace:"nowrap"}}>{l.unit||"—"}</td>
                                     <td style={{padding:"8px 10px",color:QB.textMuted,fontSize:11,whiteSpace:"nowrap"}}>{l.sub_location||"—"}</td>
+                                    <td style={{padding:"8px 10px"}}><span style={{padding:"2px 7px",borderRadius:10,fontSize:10,whiteSpace:"nowrap",background:l.element_group==="Rent"?QB.blueLight:QB.bgSidebar,color:l.element_group==="Rent"?QB.blue:QB.textSecondary,border:`1px solid ${l.element_group==="Rent"?QB.blue+"33":QB.borderLight}`}}>{l.element_group||"—"}</span></td>
                                     <td style={{padding:"8px 10px",color:QB.textMuted,fontSize:11,whiteSpace:"nowrap"}}>{l.ps_due_date?new Date(l.ps_due_date).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—"}</td>
-                                    <td style={{padding:"8px 10px"}}><span style={{padding:"2px 7px",borderRadius:10,fontSize:10,background:l.element_group==="Rent"?QB.blueLight:QB.bgSidebar,color:l.element_group==="Rent"?QB.blue:QB.textSecondary,border:`1px solid ${l.element_group==="Rent"?QB.blue+"33":QB.borderLight}`}}>{l.element_group||"—"}</span></td>
                                     <td style={{padding:"8px 10px",textAlign:"right",color:QB.textPrimary,fontWeight:500,whiteSpace:"nowrap"}}>EGP {fmtShort(l.ps_amount)}</td>
                                     <td style={{padding:"8px 10px",textAlign:"right",fontWeight:600,color:invoiced?QB.green:"#C80C0F",whiteSpace:"nowrap"}}>{invoiced?`EGP ${fmtShort(l.ps_revenue_amount)}`:"—"}</td>
                                     <td style={{padding:"8px 10px",color:QB.textMuted,fontSize:11,fontFamily:"monospace",whiteSpace:"nowrap"}}>{l.invoice_no||"—"}</td>
