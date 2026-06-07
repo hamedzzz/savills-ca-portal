@@ -1073,9 +1073,9 @@ def get_invoice_lines(
            FROM invoice_lines l
            LEFT JOIN recon_comments rc ON rc.line_id=l.id
            LEFT JOIN ca_users usr ON rc.created_by=usr.id
-           WHERE l.property_id=%s AND l.report_month=%s
+           WHERE l.property_id=%s
              AND DATE_TRUNC('month', l.ps_due_date) = DATE_TRUNC('month', %s::date)"""
-    params = [property_id, report_month, report_month + '-01']
+    params = [property_id, report_month + '-01']
     if sub_location: q += " AND l.sub_location=%s"; params.append(sub_location)
     if element_group: q += " AND l.element_group=%s"; params.append(element_group)
     if status == "invoiced": q += " AND l.ps_invoiced_flag='Y'"
@@ -1128,32 +1128,49 @@ def save_recon_comment(data: dict, current_user=Depends(require_editor)):
 @app.get("/invoice-recon/summary")
 def get_invoice_summary(property_id: int, report_month: str,
                         current_user=Depends(get_current_user)):
-    """Compare current month vs previous month"""
+    """Calculate summary from actual lines filtered by month"""
     conn = get_db(); c = conn.cursor()
 
-    # Current month
-    c.execute("""SELECT sub_location, total_lines, invoiced_count, not_invoiced_count,
-                        invoiced_amount, not_invoiced_amount
-                 FROM invoice_uploads
-                 WHERE property_id=%s AND report_month=%s
-                 ORDER BY sub_location""", (property_id, report_month))
-    current = [dict(r) for r in c.fetchall()]
+    # Current month — aggregate from lines
+    c.execute("""
+        SELECT
+            COUNT(*) as total_lines,
+            SUM(CASE WHEN ps_invoiced_flag='Y' THEN 1 ELSE 0 END) as invoiced_count,
+            SUM(CASE WHEN ps_invoiced_flag='N' THEN 1 ELSE 0 END) as not_invoiced_count,
+            SUM(CASE WHEN ps_invoiced_flag='Y' THEN ps_amount ELSE 0 END) as invoiced_amount,
+            SUM(CASE WHEN ps_invoiced_flag='N' THEN ps_amount ELSE 0 END) as not_invoiced_amount
+        FROM invoice_lines
+        WHERE property_id=%s
+          AND DATE_TRUNC('month', ps_due_date) = DATE_TRUNC('month', %s::date)
+    """, (property_id, report_month + '-01'))
+    row = c.fetchone()
+    current = [{
+        "sub_location": "All",
+        "total_lines": row["total_lines"] or 0,
+        "invoiced_count": row["invoiced_count"] or 0,
+        "not_invoiced_count": row["not_invoiced_count"] or 0,
+        "invoiced_amount": float(row["invoiced_amount"] or 0),
+        "not_invoiced_amount": float(row["not_invoiced_amount"] or 0),
+    }]
 
-    # Previous month
+    # Previous month for delta
     prev_month = (datetime.strptime(report_month+"-01", "%Y-%m-%d")
                   .replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
-    c.execute("""SELECT sub_location, invoiced_count, not_invoiced_count
-                 FROM invoice_uploads
-                 WHERE property_id=%s AND report_month=%s""",
-              (property_id, prev_month))
-    prev = {r["sub_location"]: dict(r) for r in c.fetchall()}
-
-    for row in current:
-        p = prev.get(row["sub_location"], {})
-        row["prev_invoiced_count"] = p.get("invoiced_count")
-        row["prev_not_invoiced_count"] = p.get("not_invoiced_count")
-        row["delta_invoiced"] = (row["invoiced_count"] - p["invoiced_count"]) if p else None
-        row["delta_not_invoiced"] = (row["not_invoiced_count"] - p["not_invoiced_count"]) if p else None
+    c.execute("""
+        SELECT
+            SUM(CASE WHEN ps_invoiced_flag='Y' THEN 1 ELSE 0 END) as invoiced_count,
+            SUM(CASE WHEN ps_invoiced_flag='N' THEN 1 ELSE 0 END) as not_invoiced_count
+        FROM invoice_lines
+        WHERE property_id=%s
+          AND DATE_TRUNC('month', ps_due_date) = DATE_TRUNC('month', %s::date)
+    """, (property_id, prev_month + '-01'))
+    prev = c.fetchone()
+    if prev and prev["invoiced_count"] is not None:
+        current[0]["delta_invoiced"] = current[0]["invoiced_count"] - (prev["invoiced_count"] or 0)
+        current[0]["delta_not_invoiced"] = current[0]["not_invoiced_count"] - (prev["not_invoiced_count"] or 0)
+    else:
+        current[0]["delta_invoiced"] = None
+        current[0]["delta_not_invoiced"] = None
 
     conn.close()
     return current
