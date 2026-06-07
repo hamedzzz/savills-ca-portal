@@ -1060,7 +1060,7 @@ def list_invoice_uploads(property_id: int = None, current_user=Depends(get_curre
 
 @app.get("/invoice-recon/lines")
 def get_invoice_lines(
-    property_id: int, report_month: str,
+    property_id: int, report_month: str = None,
     sub_location: str = None, element_group: str = None,
     status: str = None, current_user=Depends(get_current_user)
 ):
@@ -1075,7 +1075,8 @@ def get_invoice_lines(
            LEFT JOIN ca_users usr ON rc.created_by=usr.id
            WHERE l.property_id=%s
              AND (%s IS NULL OR DATE_TRUNC('month', l.ps_due_date) = DATE_TRUNC('month', %s::date))"""
-    params = [property_id, (report_month + '-01') if report_month else None, (report_month + '-01') if report_month else None]
+    rmonth_date = (report_month + '-01') if report_month else None
+    params = [property_id, rmonth_date, rmonth_date]
     if sub_location: q += " AND l.sub_location=%s"; params.append(sub_location)
     if element_group: q += " AND l.element_group=%s"; params.append(element_group)
     if status == "invoiced": q += " AND l.ps_invoiced_flag='Y'"
@@ -1126,7 +1127,7 @@ def save_recon_comment(data: dict, current_user=Depends(require_editor)):
     return {"ok": True}
 
 @app.get("/invoice-recon/summary")
-def get_invoice_summary(property_id: int, report_month: str,
+def get_invoice_summary(property_id: int, report_month: str = None,
                         sub_location: str = None,
                         current_user=Depends(get_current_user)):
     """Calculate summary from actual lines filtered by month"""
@@ -1144,7 +1145,10 @@ def get_invoice_summary(property_id: int, report_month: str,
         WHERE property_id=%s
           AND (%s IS NULL OR DATE_TRUNC('month', ps_due_date) = DATE_TRUNC('month', %s::date))
           AND (%s IS NULL OR sub_location=%s)
-    """, (property_id, (report_month + '-01') if report_month else None, (report_month + '-01') if report_month else None, sub_location, sub_location))
+    """, (property_id,
+           (report_month + '-01') if report_month else None,
+           (report_month + '-01') if report_month else None,
+           sub_location or None, sub_location or None))
     row = c.fetchone()
     current = [{
         "sub_location": "All",
@@ -1166,7 +1170,10 @@ def get_invoice_summary(property_id: int, report_month: str,
         WHERE property_id=%s
           AND (%s IS NULL OR DATE_TRUNC('month', ps_due_date) = DATE_TRUNC('month', %s::date))
           AND (%s IS NULL OR sub_location=%s)
-    """, (property_id, (prev_month + '-01') if prev_month else None, (prev_month + '-01') if prev_month else None, sub_location, sub_location))
+    """, (property_id,
+           (prev_month + '-01') if prev_month else None,
+           (prev_month + '-01') if prev_month else None,
+           sub_location or None, sub_location or None))
     prev = c.fetchone()
     if prev and prev["invoiced_count"] is not None:
         current[0]["delta_invoiced"] = current[0]["invoiced_count"] - (prev["invoiced_count"] or 0)
@@ -1457,6 +1464,23 @@ def get_rent_roll_history(property_id: int, current_user=Depends(get_current_use
     result.sort(key=lambda x: x["upload_date"] or "", reverse=True)
     conn.close()
     return result
+
+@app.get("/invoice-recon/available-months")
+def get_available_months(property_id: int, sub_location: str = None,
+                         current_user=Depends(get_current_user)):
+    """Get distinct months available in invoice lines for a property"""
+    conn = get_db(); c = conn.cursor()
+    q = """SELECT DISTINCT TO_CHAR(DATE_TRUNC('month', ps_due_date), 'YYYY-MM') as month
+           FROM invoice_lines
+           WHERE property_id=%s AND ps_due_date IS NOT NULL"""
+    params = [property_id]
+    if sub_location:
+        q += " AND sub_location=%s"; params.append(sub_location)
+    q += " ORDER BY month"
+    c.execute(q, params)
+    rows = [r["month"] for r in c.fetchall()]
+    conn.close()
+    return rows
 
 @app.get("/pbi/embed-token/{report_id}")
 async def get_embed_token(report_id: str, workspace_id: str = PBI_WORKSPACE_ID, current_user=Depends(get_current_user)):
