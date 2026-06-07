@@ -1074,8 +1074,8 @@ def get_invoice_lines(
            LEFT JOIN recon_comments rc ON rc.line_id=l.id
            LEFT JOIN ca_users usr ON rc.created_by=usr.id
            WHERE l.property_id=%s
-             AND DATE_TRUNC('month', l.ps_due_date) = DATE_TRUNC('month', %s::date)"""
-    params = [property_id, report_month + '-01']
+             AND (%s IS NULL OR DATE_TRUNC('month', l.ps_due_date) = DATE_TRUNC('month', %s::date))"""
+    params = [property_id, (report_month + '-01') if report_month else None, (report_month + '-01') if report_month else None]
     if sub_location: q += " AND l.sub_location=%s"; params.append(sub_location)
     if element_group: q += " AND l.element_group=%s"; params.append(element_group)
     if status == "invoiced": q += " AND l.ps_invoiced_flag='Y'"
@@ -1142,9 +1142,9 @@ def get_invoice_summary(property_id: int, report_month: str,
             SUM(CASE WHEN ps_invoiced_flag='N' THEN ps_amount ELSE 0 END) as not_invoiced_amount
         FROM invoice_lines
         WHERE property_id=%s
-          AND DATE_TRUNC('month', ps_due_date) = DATE_TRUNC('month', %s::date)
+          AND (%s IS NULL OR DATE_TRUNC('month', ps_due_date) = DATE_TRUNC('month', %s::date))
           AND (%s IS NULL OR sub_location=%s)
-    """, (property_id, report_month + '-01', sub_location, sub_location))
+    """, (property_id, (report_month + '-01') if report_month else None, (report_month + '-01') if report_month else None, sub_location, sub_location))
     row = c.fetchone()
     current = [{
         "sub_location": "All",
@@ -1164,9 +1164,9 @@ def get_invoice_summary(property_id: int, report_month: str,
             SUM(CASE WHEN ps_invoiced_flag='N' THEN 1 ELSE 0 END) as not_invoiced_count
         FROM invoice_lines
         WHERE property_id=%s
-          AND DATE_TRUNC('month', ps_due_date) = DATE_TRUNC('month', %s::date)
+          AND (%s IS NULL OR DATE_TRUNC('month', ps_due_date) = DATE_TRUNC('month', %s::date))
           AND (%s IS NULL OR sub_location=%s)
-    """, (property_id, prev_month + '-01', sub_location, sub_location))
+    """, (property_id, (prev_month + '-01') if prev_month else None, (prev_month + '-01') if prev_month else None, sub_location, sub_location))
     prev = c.fetchone()
     if prev and prev["invoiced_count"] is not None:
         current[0]["delta_invoiced"] = current[0]["invoiced_count"] - (prev["invoiced_count"] or 0)
