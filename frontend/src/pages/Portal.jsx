@@ -469,9 +469,10 @@ export default function Portal(){
   };
 
   const loadReconLines=async(propId, month, sub, elem, status)=>{
-    if(!propId||!month) return;
+    if(!propId) return;
     setReconLoading(true);
-    let url=`/invoice-recon/lines?property_id=${propId}&report_month=${month}`;
+    let url=`/invoice-recon/lines?property_id=${propId}`;
+    if(month) url+=`&report_month=${month}`;
     if(sub) url+=`&sub_location=${encodeURIComponent(sub)}`;
     if(elem) url+=`&element_group=${encodeURIComponent(elem)}`;
     if(status) url+=`&status=${status}`;
@@ -481,8 +482,9 @@ export default function Portal(){
   };
 
   const loadReconSummary=async(propId, month, sub)=>{
-    if(!propId||!month) return;
-    let url=`/invoice-recon/summary?property_id=${propId}&report_month=${month}`;
+    if(!propId) return;
+    let url=`/invoice-recon/summary?property_id=${propId}`;
+    if(month) url+=`&report_month=${month}`;
     if(sub) url+=`&sub_location=${encodeURIComponent(sub)}`;
     const d=await apiFetch(url);
     if(d) setReconSummary(d);
@@ -1859,8 +1861,14 @@ export default function Portal(){
                     <div>
                       <label style={s.label}>Property</label>
                       <select style={{...s.input,width:150}} value={reconProp} onChange={e=>{
-                        setReconProp(e.target.value);setReconMonth("");setReconLines([]);setReconSummary([]);
-                        if(e.target.value){loadReconMonths(parseInt(e.target.value));loadReconUploadLog(parseInt(e.target.value));}
+                        const pid=e.target.value;
+                        setReconProp(pid);setReconMonth("");setReconSub("");setReconLines([]);setReconSummary([]);
+                        if(pid){
+                          loadReconMonths(parseInt(pid));
+                          loadReconUploadLog(parseInt(pid));
+                          loadReconLines(pid,"",reconSub,reconElement,reconStatus);
+                          loadReconSummary(pid,"",reconSub);
+                        }
                       }}>
                         <option value="">Select...</option>
                         {properties.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
@@ -2011,8 +2019,13 @@ export default function Portal(){
                           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                             <thead style={{position:"sticky",top:0,zIndex:5}}>
                               <tr style={{background:QB.bgSidebar}}>
-                                {["Brand","Unit","Location","Element","Due Date","Expected","Invoiced","Invoice No.","Status","Comment"].map(h=>(
-                                  <th key={h} style={{padding:"9px 10px",textAlign:"left",fontSize:10,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".06em",borderBottom:`2px solid ${QB.borderCard}`,whiteSpace:"nowrap"}}>{h}</th>
+                                {[
+                              {h:"Brand",w:150},{h:"Unit",w:120},{h:"Location",w:90},
+                              {h:"Element",w:110},{h:"Due Date",w:100},
+                              {h:"Expected",w:100},{h:"Invoiced",w:100},
+                              {h:"Invoice No.",w:100},{h:"Status",w:110},{h:"Comment",w:120}
+                            ].map(({h,w})=>(
+                                  <th key={h} style={{padding:"9px 10px",textAlign:"left",fontSize:10,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".06em",borderBottom:`2px solid ${QB.borderCard}`,whiteSpace:"nowrap",minWidth:w}}>{h}</th>
                                 ))}
                               </tr>
                             </thead>
