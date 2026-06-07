@@ -1879,16 +1879,34 @@ export default function Portal(){
                     </div>
                     <div>
                       <label style={s.label}>Month</label>
-                      <select style={{...s.input,width:160,color:reconMonth?QB.blue:QB.textMuted,fontWeight:reconMonth?600:400,borderColor:reconMonth?QB.blue:QB.borderInput}} value={reconMonth} onChange={e=>{
-                        const month=e.target.value;
-                        setReconMonth(month);
+                      <input type="month" style={{...s.input,width:160,color:reconMonth?QB.blue:QB.textMuted,fontWeight:reconMonth?600:400,borderColor:reconMonth?QB.blue:QB.borderInput}}
+                        value={reconMonth}
+                        min={reconMonths.length>0?reconMonths[0].report_month:""}
+                        max={reconMonths.length>0?reconMonths[reconMonths.length-1].report_month:""}
+                        onChange={e=>{
+                          const month=e.target.value;
+                          setReconMonth(month);
+                          if(reconProp){
+                            loadReconLines(reconProp,month,reconSub,reconElement,reconStatus);
+                            loadReconSummary(reconProp,month,reconSub);
+                          }
+                        }}/>
+                      {reconMonth&&<button style={{fontSize:11,color:QB.textMuted,background:"none",border:"none",cursor:"pointer",marginTop:2,display:"block"}} onClick={()=>{
+                        setReconMonth("");
+                        if(reconProp){loadReconLines(reconProp,"",reconSub,reconElement,reconStatus);loadReconSummary(reconProp,"",reconSub);}
+                      }}>✕ Clear (YTD)</button>}
+                    </div>
+                    <div>
+                      <label style={s.label}>Sub-location</label>
+                      <select style={{...s.input,width:140}} value={reconSub} onChange={e=>{
+                        const sub=e.target.value; setReconSub(sub);
                         if(reconProp){
-                          loadReconLines(reconProp,month,reconSub,reconElement,reconStatus);
-                          loadReconSummary(reconProp,month,reconSub);
+                          loadReconLines(reconProp,reconMonth,sub,reconElement,reconStatus);
+                          loadReconSummary(reconProp,reconMonth,sub);
                         }
                       }}>
-                        <option value="">All months (YTD)</option>
-                        {reconMonths.map(m=><option key={m.report_month} value={m.report_month}>{fmtMonth(m.report_month)}</option>)}
+                        <option value="">All</option>
+                        {[...new Set(reconLines.map(l=>l.sub_location).filter(Boolean))].sort().map(s=><option key={s}>{s}</option>)}
                       </select>
                     </div>
                     <div>
@@ -1979,7 +1997,7 @@ export default function Portal(){
                 })()}
 
                 {/* Table */}
-                {reconProp&&reconMonth&&(()=>{
+                {reconProp&&(()=>{
                   const filtered=reconLines.filter(l=>{
                     if(reconSearch){
                       const q=reconSearch.toLowerCase();
@@ -2069,7 +2087,7 @@ export default function Portal(){
                   );
                 })()}
 
-                {!reconProp&&<div style={{...s.card,textAlign:"center",padding:"50px"}}>
+                {!reconProp&&<div style={{...s.card,textAlign:"center",padding:"40px"}}>
                   <div style={{fontSize:32,marginBottom:10}}>📑</div>
                   <div style={{fontSize:14,fontWeight:600,color:QB.textPrimary,marginBottom:6}}>Select a property</div>
                   <div style={{fontSize:13,color:QB.textMuted}}>Choose a property and month to view invoice reconciliation</div>
