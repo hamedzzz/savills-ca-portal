@@ -457,6 +457,10 @@ export default function Portal(){
     if(d) setCustomers(d);
   };
 
+  useEffect(()=>{
+    if(reconProp&&reconMonth) loadReconLines(reconProp,reconMonth,reconSub,reconElement,reconStatus);
+  },[reconStatus]);
+
   const loadReconUploadLog=async(propId)=>{
     if(!propId) return;
     const d=await apiFetch(`/invoice-recon/uploads?property_id=${propId}`);
@@ -1884,8 +1888,8 @@ export default function Portal(){
                     <div>
                       <label style={s.label}>Status</label>
                       <select style={{...s.input,width:140}} value={reconStatus} onChange={e=>{
-                        setReconStatus(e.target.value);
-                        if(reconProp&&reconMonth) loadReconLines(reconProp,reconMonth,reconSub,reconElement,e.target.value);
+                        const v=e.target.value; setReconStatus(v);
+                        if(reconProp&&reconMonth) loadReconLines(reconProp,reconMonth,reconSub,reconElement,v);
                       }}>
                         <option value="">All</option>
                         <option value="invoiced">✅ Invoiced</option>
@@ -1918,17 +1922,23 @@ export default function Portal(){
                         <div style={{fontSize:10,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em",marginBottom:4}}>Total lines</div>
                         <div style={{fontSize:20,fontWeight:700,color:QB.textPrimary}}>{tot.total_lines}</div>
                       </div>
-                      <div style={{...s.card,marginBottom:0,textAlign:"center",padding:"14px",border:`1px solid #B7E5B0`,background:"#F2FBF0"}}>
+                      <div onClick={()=>setReconStatus("invoiced")} style={{...s.card,marginBottom:0,textAlign:"center",padding:"14px",border:`1px solid #B7E5B0`,background:"#F2FBF0",cursor:"pointer"}}
+                        onMouseEnter={e=>e.currentTarget.style.boxShadow=`0 0 0 2px #2CA01C`}
+                        onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
                         <div style={{fontSize:10,color:"#2CA01C",textTransform:"uppercase",letterSpacing:".07em",marginBottom:4}}>✅ Invoiced</div>
                         <div style={{fontSize:20,fontWeight:700,color:"#2CA01C"}}>{tot.invoiced_count} <span style={{fontSize:13}}>({pct}%)</span></div>
                         <div style={{fontSize:11,color:"#2CA01C",marginTop:2}}>EGP {fmtShort(tot.invoiced_amount)}</div>
                         {tot.delta_invoiced!==null&&tot.delta_invoiced!==0&&<div style={{fontSize:10,color:"#2CA01C",marginTop:2}}>{tot.delta_invoiced>0?"+":""}{tot.delta_invoiced} vs last month</div>}
+                        <div style={{fontSize:10,color:"#2CA01C",marginTop:3}}>Click to filter →</div>
                       </div>
-                      <div style={{...s.card,marginBottom:0,textAlign:"center",padding:"14px",border:`1px solid #FECACA`,background:"#FEF2F2"}}>
+                      <div onClick={()=>setReconStatus("not_invoiced")} style={{...s.card,marginBottom:0,textAlign:"center",padding:"14px",border:`1px solid #FECACA`,background:"#FEF2F2",cursor:"pointer"}}
+                        onMouseEnter={e=>e.currentTarget.style.boxShadow=`0 0 0 2px #C80C0F`}
+                        onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
                         <div style={{fontSize:10,color:"#C80C0F",textTransform:"uppercase",letterSpacing:".07em",marginBottom:4}}>❌ Not invoiced</div>
                         <div style={{fontSize:20,fontWeight:700,color:"#C80C0F"}}>{tot.not_invoiced_count}</div>
                         <div style={{fontSize:11,color:"#C80C0F",marginTop:2}}>EGP {fmtShort(tot.not_invoiced_amount)}</div>
                         {tot.delta_not_invoiced!==null&&tot.delta_not_invoiced!==0&&<div style={{fontSize:10,color:"#C80C0F",marginTop:2}}>{tot.delta_not_invoiced>0?"+":""}{tot.delta_not_invoiced} vs last month</div>}
+                        <div style={{fontSize:10,color:"#C80C0F",marginTop:3}}>Click to filter →</div>
                       </div>
                       <div style={{...s.card,marginBottom:0,textAlign:"center",padding:"14px"}}>
                         <div style={{fontSize:10,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em",marginBottom:4}}>Coverage</div>
@@ -1978,7 +1988,7 @@ export default function Portal(){
                           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                             <thead style={{position:"sticky",top:0,zIndex:5}}>
                               <tr style={{background:QB.bgSidebar}}>
-                                {["Brand","Unit","Element","Expected","Invoiced","Invoice No.","Status","Comment"].map(h=>(
+                                {["Brand","Unit","Location","Element","Expected","Invoiced","Invoice No.","Status","Comment"].map(h=>(
                                   <th key={h} style={{padding:"9px 10px",textAlign:"left",fontSize:10,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".06em",borderBottom:`2px solid ${QB.borderCard}`,whiteSpace:"nowrap"}}>{h}</th>
                                 ))}
                               </tr>
@@ -1993,6 +2003,7 @@ export default function Portal(){
                                     onMouseLeave={e=>e.currentTarget.style.background=invoiced?(i%2===0?QB.bgCard:QB.bgSidebar):(i%2===0?"#FEF2F2":"#FFF5F5")}>
                                     <td style={{padding:"8px 10px",fontWeight:600,color:QB.textPrimary,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.brand||l.customer_name||"—"}</td>
                                     <td style={{padding:"8px 10px",color:QB.textSecondary,whiteSpace:"nowrap"}}>{l.unit||"—"}</td>
+                                    <td style={{padding:"8px 10px",color:QB.textMuted,fontSize:11,whiteSpace:"nowrap"}}>{l.sub_location||"—"}</td>
                                     <td style={{padding:"8px 10px"}}><span style={{padding:"2px 7px",borderRadius:10,fontSize:10,background:l.element_group==="Rent"?QB.blueLight:QB.bgSidebar,color:l.element_group==="Rent"?QB.blue:QB.textSecondary,border:`1px solid ${l.element_group==="Rent"?QB.blue+"33":QB.borderLight}`}}>{l.element_group||"—"}</span></td>
                                     <td style={{padding:"8px 10px",textAlign:"right",color:QB.textPrimary,fontWeight:500,whiteSpace:"nowrap"}}>EGP {fmtShort(l.ps_amount)}</td>
                                     <td style={{padding:"8px 10px",textAlign:"right",fontWeight:600,color:invoiced?QB.green:"#C80C0F",whiteSpace:"nowrap"}}>{invoiced?`EGP ${fmtShort(l.ps_revenue_amount)}`:"—"}</td>
