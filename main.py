@@ -132,6 +132,57 @@ def init_db():
         sc NUMERIC DEFAULT 0
     )""")
 
+    c.execute("""CREATE TABLE IF NOT EXISTS invoice_uploads (
+        id SERIAL PRIMARY KEY,
+        property_id INTEGER NOT NULL REFERENCES properties(id),
+        sub_location TEXT DEFAULT '',
+        filename TEXT NOT NULL,
+        uploaded_by INTEGER NOT NULL REFERENCES ca_users(id),
+        upload_date TIMESTAMP DEFAULT NOW(),
+        report_month TEXT NOT NULL,
+        total_lines INTEGER DEFAULT 0,
+        invoiced_count INTEGER DEFAULT 0,
+        not_invoiced_count INTEGER DEFAULT 0,
+        invoiced_amount NUMERIC DEFAULT 0,
+        not_invoiced_amount NUMERIC DEFAULT 0
+    )""")
+
+    c.execute("""CREATE TABLE IF NOT EXISTS invoice_lines (
+        id SERIAL PRIMARY KEY,
+        upload_id INTEGER NOT NULL REFERENCES invoice_uploads(id) ON DELETE CASCADE,
+        property_id INTEGER NOT NULL REFERENCES properties(id),
+        sub_location TEXT DEFAULT '',
+        report_month TEXT NOT NULL,
+        document_no TEXT DEFAULT '',
+        unit TEXT DEFAULT '',
+        unit_type TEXT DEFAULT '',
+        customer_name TEXT DEFAULT '',
+        brand TEXT DEFAULT '',
+        element_group TEXT DEFAULT '',
+        ps_due_date DATE,
+        ps_amount NUMERIC DEFAULT 0,
+        ps_paid_amount NUMERIC DEFAULT 0,
+        ps_invoiced_flag TEXT DEFAULT 'N',
+        ps_revenue_amount NUMERIC DEFAULT 0,
+        invoice_no TEXT DEFAULT '',
+        lease_start DATE,
+        lease_end DATE,
+        document_status TEXT DEFAULT ''
+    )""")
+
+    c.execute("""CREATE TABLE IF NOT EXISTS recon_comments (
+        id SERIAL PRIMARY KEY,
+        line_id INTEGER NOT NULL REFERENCES invoice_lines(id) ON DELETE CASCADE,
+        property_id INTEGER NOT NULL REFERENCES properties(id),
+        report_month TEXT NOT NULL,
+        reason TEXT DEFAULT '',
+        notes TEXT DEFAULT '',
+        status TEXT DEFAULT 'open',
+        created_by INTEGER NOT NULL REFERENCES ca_users(id),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+    )""")
+
     c.execute("""CREATE TABLE IF NOT EXISTS customers (
         id SERIAL PRIMARY KEY,
         brand_name TEXT NOT NULL,
@@ -197,6 +248,7 @@ def init_db():
     safe_exec(c, conn, "ALTER TABLE rent_roll_leases ADD COLUMN IF NOT EXISTS tenant_number TEXT DEFAULT ''")
     safe_exec(c, conn, """CREATE INDEX IF NOT EXISTS idx_rrm_lease_month ON rent_roll_monthly(lease_id, month)""")
     safe_exec(c, conn, """CREATE INDEX IF NOT EXISTS idx_rrm_upload_month ON rent_roll_monthly(upload_id, month)""")
+    safe_exec(c, conn, "ALTER TABLE invoice_uploads ADD COLUMN IF NOT EXISTS report_month TEXT DEFAULT ''")
     safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS tenant_number TEXT DEFAULT ''")
     safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS document_type TEXT DEFAULT ''")
     safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS document_no TEXT DEFAULT ''")
@@ -862,6 +914,236 @@ def get_rent_roll_months(property_id: int, current_user=Depends(get_current_user
     rows = [r["month"] for r in c.fetchall()]
     conn.close()
     return rows
+
+# ── Invoice Reconciliation ────────────────────────────────────────────────────
+@app.post("/invoice-recon/upload")
+async def upload_invoice_recon(
+    property_id: int = Form(...),
+    sub_location: str = Form(default=""),
+    report_month: str = Form(...),
+    file: UploadFile = File(...),
+    current_user=Depends(require_editor)
+):
+    import pandas as pd
+    content = await file.read()
+
+    # Find header row
+    df_raw = pd.read_excel(io.BytesIO(content), header=None)
+    header_row = 2
+    for i, row in df_raw.iterrows():
+        if any('Document No' in str(v) for v in row.values):
+            header_row = i
+            break
+
+    df = pd.read_excel(io.BytesIO(content), header=header_row)
+    df.columns = [str(c).strip() for c in df.columns]
+
+    # Filter: Approved leases, relevant element groups, target month
+    if 'Document Status' in df.columns:
+        df = df[df['Document Status'].isin(['Approved','Active'])]
+
+    # Filter by PS Due Date month
+    if 'PS Due Date' in df.columns:
+        df['PS Due Date'] = pd.to_datetime(df['PS Due Date'], errors='coerce')
+        target = pd.to_datetime(report_month + '-01')
+        df = df[df['PS Due Date'].dt.to_period('M') == target.to_period('M')]
+
+    # Filter element groups
+    relevant = ['Rent','Service Charge','Revenue Sharing','Revenue Sharing ']
+    if 'Element Group' in df.columns:
+        df = df[df['Element Group'].isin(relevant)]
+
+    if len(df) == 0:
+        raise HTTPException(400, f"No matching records found for {report_month}")
+
+    def safe_float(v):
+        try: return float(v) if pd.notna(v) else 0.0
+        except: return 0.0
+
+    def safe_str(v):
+        s = str(v).strip() if pd.notna(v) else ''
+        return '' if s.lower() in ('nan','none','nat') else s
+
+    def safe_date(v):
+        if pd.isna(v): return None
+        try: return pd.to_datetime(v).date()
+        except: return None
+
+    # Auto-detect sub_location from Project column
+    if not sub_location and 'Project' in df.columns:
+        projs = df['Project'].dropna().unique()
+        projs = [p for p in projs if str(p).strip().lower() != 'total']
+        if len(projs) == 1:
+            sub_location = str(projs[0]).strip()
+
+    invoiced = df[df['PS Invoiced Flag']=='Y']
+    not_invoiced = df[df['PS Invoiced Flag']=='N']
+
+    summary = {
+        'total_lines': len(df),
+        'invoiced_count': len(invoiced),
+        'not_invoiced_count': len(not_invoiced),
+        'invoiced_amount': float(invoiced['PS Revenue Amount'].fillna(0).sum()),
+        'not_invoiced_amount': float(not_invoiced['PS Amount'].fillna(0).sum()),
+    }
+
+    conn = get_db(); c = conn.cursor()
+
+    # Delete previous upload for same property+sub_location+month
+    c.execute("""DELETE FROM invoice_uploads
+                 WHERE property_id=%s AND sub_location=%s AND report_month=%s""",
+              (property_id, sub_location, report_month))
+
+    c.execute("""INSERT INTO invoice_uploads
+        (property_id,sub_location,filename,uploaded_by,report_month,
+         total_lines,invoiced_count,not_invoiced_count,invoiced_amount,not_invoiced_amount)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+        (property_id, sub_location, file.filename, current_user["id"], report_month,
+         summary['total_lines'], summary['invoiced_count'], summary['not_invoiced_count'],
+         summary['invoiced_amount'], summary['not_invoiced_amount']))
+    upload_id = c.fetchone()["id"]
+
+    for _, row in df.iterrows():
+        c.execute("""INSERT INTO invoice_lines
+            (upload_id,property_id,sub_location,report_month,document_no,unit,unit_type,
+             customer_name,brand,element_group,ps_due_date,ps_amount,ps_paid_amount,
+             ps_invoiced_flag,ps_revenue_amount,invoice_no,lease_start,lease_end,document_status)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (upload_id, property_id, sub_location, report_month,
+             safe_str(row.get('Document No','')),
+             safe_str(row.get('Unit','')),
+             safe_str(row.get('Unit Type','')),
+             safe_str(row.get('Customer Name','')),
+             safe_str(row.get('Brand','')),
+             safe_str(row.get('Element Group','')),
+             safe_date(row.get('PS Due Date')),
+             safe_float(row.get('PS Amount',0)),
+             safe_float(row.get('PS Paid Amount',0)),
+             safe_str(row.get('PS Invoiced Flag','N')),
+             safe_float(row.get('PS Revenue Amount',0)),
+             safe_str(row.get('Invoice No.','')),
+             safe_date(row.get('Lease Start Date')),
+             safe_date(row.get('Lease End Date')),
+             safe_str(row.get('Document Status',''))))
+
+    log_activity(conn, current_user["id"], "uploaded invoice recon", "invoice",
+                 f"{sub_location} {report_month}",
+                 f"lines={summary['total_lines']} invoiced={summary['invoiced_count']}")
+    conn.commit(); conn.close()
+    return {"ok": True, "upload_id": upload_id, "sub_location": sub_location, **summary}
+
+@app.get("/invoice-recon/uploads")
+def list_invoice_uploads(property_id: int = None, current_user=Depends(get_current_user)):
+    conn = get_db(); c = conn.cursor()
+    q = """SELECT u.*, p.name as property_name, usr.full_name as uploaded_by_name
+           FROM invoice_uploads u
+           JOIN properties p ON u.property_id=p.id
+           JOIN ca_users usr ON u.uploaded_by=usr.id
+           WHERE 1=1"""
+    params = []
+    if property_id: q += " AND u.property_id=%s"; params.append(property_id)
+    q += " ORDER BY u.report_month DESC, u.sub_location"
+    c.execute(q, params)
+    rows = [dict(r) for r in c.fetchall()]; conn.close(); return rows
+
+@app.get("/invoice-recon/lines")
+def get_invoice_lines(
+    property_id: int, report_month: str,
+    sub_location: str = None, element_group: str = None,
+    status: str = None, current_user=Depends(get_current_user)
+):
+    conn = get_db(); c = conn.cursor()
+    q = """SELECT l.*,
+                  rc.reason, rc.notes, rc.status as comment_status,
+                  rc.id as comment_id,
+                  usr.full_name as comment_by,
+                  rc.updated_at as comment_date
+           FROM invoice_lines l
+           LEFT JOIN recon_comments rc ON rc.line_id=l.id
+           LEFT JOIN ca_users usr ON rc.created_by=usr.id
+           WHERE l.property_id=%s AND l.report_month=%s"""
+    params = [property_id, report_month]
+    if sub_location: q += " AND l.sub_location=%s"; params.append(sub_location)
+    if element_group: q += " AND l.element_group=%s"; params.append(element_group)
+    if status == "invoiced": q += " AND l.ps_invoiced_flag='Y'"
+    elif status == "not_invoiced": q += " AND l.ps_invoiced_flag='N'"
+    q += " ORDER BY l.ps_invoiced_flag ASC, l.brand, l.element_group"
+    c.execute(q, params)
+    rows = [dict(r) for r in c.fetchall()]; conn.close(); return rows
+
+@app.get("/invoice-recon/months")
+def get_invoice_months(property_id: int = None, current_user=Depends(get_current_user)):
+    conn = get_db(); c = conn.cursor()
+    q = "SELECT DISTINCT report_month, sub_location, property_id FROM invoice_uploads WHERE 1=1"
+    params = []
+    if property_id: q += " AND property_id=%s"; params.append(property_id)
+    q += " ORDER BY report_month DESC"
+    c.execute(q, params)
+    rows = [dict(r) for r in c.fetchall()]; conn.close(); return rows
+
+@app.post("/invoice-recon/comments")
+def save_recon_comment(data: dict, current_user=Depends(require_editor)):
+    conn = get_db(); c = conn.cursor()
+    line_id = data["line_id"]
+
+    # Get line info
+    c.execute("SELECT property_id, report_month FROM invoice_lines WHERE id=%s", (line_id,))
+    line = c.fetchone()
+    if not line: conn.close(); raise HTTPException(404, "Line not found")
+
+    # Upsert comment
+    c.execute("SELECT id FROM recon_comments WHERE line_id=%s", (line_id,))
+    existing = c.fetchone()
+    if existing:
+        c.execute("""UPDATE recon_comments SET reason=%s, notes=%s, status=%s,
+                     created_by=%s, updated_at=NOW() WHERE line_id=%s""",
+                  (data.get("reason",""), data.get("notes",""),
+                   data.get("status","open"), current_user["id"], line_id))
+    else:
+        c.execute("""INSERT INTO recon_comments
+                     (line_id,property_id,report_month,reason,notes,status,created_by)
+                     VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                  (line_id, line["property_id"], line["report_month"],
+                   data.get("reason",""), data.get("notes",""),
+                   data.get("status","open"), current_user["id"]))
+
+    log_activity(conn, current_user["id"], "added recon comment", "invoice",
+                 data.get("reason",""), f"line_id={line_id}")
+    conn.commit(); conn.close()
+    return {"ok": True}
+
+@app.get("/invoice-recon/summary")
+def get_invoice_summary(property_id: int, report_month: str,
+                        current_user=Depends(get_current_user)):
+    """Compare current month vs previous month"""
+    conn = get_db(); c = conn.cursor()
+
+    # Current month
+    c.execute("""SELECT sub_location, total_lines, invoiced_count, not_invoiced_count,
+                        invoiced_amount, not_invoiced_amount
+                 FROM invoice_uploads
+                 WHERE property_id=%s AND report_month=%s
+                 ORDER BY sub_location""", (property_id, report_month))
+    current = [dict(r) for r in c.fetchall()]
+
+    # Previous month
+    prev_month = (datetime.strptime(report_month+"-01", "%Y-%m-%d")
+                  .replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+    c.execute("""SELECT sub_location, invoiced_count, not_invoiced_count
+                 FROM invoice_uploads
+                 WHERE property_id=%s AND report_month=%s""",
+              (property_id, prev_month))
+    prev = {r["sub_location"]: dict(r) for r in c.fetchall()}
+
+    for row in current:
+        p = prev.get(row["sub_location"], {})
+        row["prev_invoiced_count"] = p.get("invoiced_count")
+        row["prev_not_invoiced_count"] = p.get("not_invoiced_count")
+        row["delta_invoiced"] = (row["invoiced_count"] - p["invoiced_count"]) if p else None
+        row["delta_not_invoiced"] = (row["not_invoiced_count"] - p["not_invoiced_count"]) if p else None
+
+    conn.close()
+    return current
 
 # ── Customers ─────────────────────────────────────────────────────────────────
 @app.get("/customers")
