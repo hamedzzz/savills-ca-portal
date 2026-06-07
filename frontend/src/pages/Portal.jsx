@@ -173,6 +173,8 @@ export default function Portal(){
   const[reconDetail,setReconDetail]=useState(null);
   const[reconComment,setReconComment]=useState({reason:"",notes:"",status:"open"});
   const[uploadingRecon,setUploadingRecon]=useState(false);
+  const[reconUploadMonth,setReconUploadMonth]=useState("");
+  const[reconUploadLog,setReconUploadLog]=useState([]);
   const[rrSubTab,setRrSubTab]=useState("leases");
   const[rrTabMonthly,setRrTabMonthly]=useState([]);
   const[rrTabMonths,setRrTabMonths]=useState([]);
@@ -453,6 +455,12 @@ export default function Portal(){
     if(params.length) url+="?"+params.join("&");
     const d=await apiFetch(url);
     if(d) setCustomers(d);
+  };
+
+  const loadReconUploadLog=async(propId)=>{
+    if(!propId) return;
+    const d=await apiFetch(`/invoice-recon/uploads?property_id=${propId}`);
+    if(d) setReconUploadLog(d);
   };
 
   const loadReconLines=async(propId, month, sub, elem, status)=>{
@@ -1809,26 +1817,35 @@ export default function Portal(){
                 <div style={{...s.card,marginBottom:16}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,marginBottom:14}}>
                     <div style={s.cardTitle}>Invoice Reconciliation</div>
-                    <label style={{...s.btnS,padding:"6px 14px",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
-                      📥 Upload Lease Summary
-                      <input type="file" accept=".xlsx" style={{display:"none"}} onChange={async e=>{
-                        const file=e.target.files[0]; if(!file||!reconProp||!reconMonth) return;
+                    <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+                      <div>
+                        <label style={{...s.label,marginBottom:2}}>Upload month</label>
+                        <input type="month" style={{...s.input,width:150}} value={reconUploadMonth} onChange={e=>setReconUploadMonth(e.target.value)}/>
+                      </div>
+                      <label style={{...s.btnS,padding:"7px 14px",fontSize:12,cursor:reconProp&&reconUploadMonth?"pointer":"not-allowed",opacity:reconProp&&reconUploadMonth?1:0.5,display:"flex",alignItems:"center",gap:5}}>
+                      {uploadingRecon?"⏳":"📥"} Upload Lease Summary
+                      <input type="file" accept=".xlsx" style={{display:"none"}} disabled={!reconProp||!reconUploadMonth} onChange={async e=>{
+                        const file=e.target.files[0]; if(!file||!reconProp||!reconUploadMonth) return;
                         setUploadingRecon(true);
                         const fd=new FormData(); fd.append("file",file);
-                        fd.append("property_id",reconProp); fd.append("report_month",reconMonth);
+                        fd.append("property_id",reconProp); fd.append("report_month",reconUploadMonth);
                         try{
                           const token=localStorage.getItem("ca_token");
                           const API=import.meta.env.VITE_API_URL||"http://localhost:8001";
                           const res=await fetch(`${API}/invoice-recon/upload`,{method:"POST",headers:{Authorization:`Bearer ${token}`},body:fd});
                           const r=await res.json();
-                          if(r.ok){flash(`Uploaded: ${r.invoiced_count} invoiced, ${r.not_invoiced_count} not invoiced`);
-                          loadReconLines(reconProp,reconMonth,reconSub,reconElement,reconStatus);
-                          loadReconSummary(reconProp,reconMonth);}
-                          else flash(r.detail||"Upload failed","error");
+                          if(r.ok){
+                            flash(`Uploaded: ${r.invoiced_count} invoiced, ${r.not_invoiced_count} not invoiced`);
+                            await loadReconMonths(parseInt(reconProp));
+                            setReconMonth(reconUploadMonth);
+                            loadReconLines(reconProp,reconUploadMonth,reconSub,reconElement,reconStatus);
+                            loadReconSummary(reconProp,reconUploadMonth);
+                          }else flash(r.detail||"Upload failed","error");
                         }catch(ex){flash("Upload failed","error");}
                         finally{setUploadingRecon(false);e.target.value="";}
                       }}/>
                     </label>
+                    </div>
                   </div>
                   {/* Filters */}
                   <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
@@ -1836,7 +1853,7 @@ export default function Portal(){
                       <label style={s.label}>Property</label>
                       <select style={{...s.input,width:150}} value={reconProp} onChange={e=>{
                         setReconProp(e.target.value);setReconMonth("");setReconLines([]);setReconSummary([]);
-                        if(e.target.value) loadReconMonths(parseInt(e.target.value));
+                        if(e.target.value){loadReconMonths(parseInt(e.target.value));loadReconUploadLog(parseInt(e.target.value));}
                       }}>
                         <option value="">Select...</option>
                         {properties.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
@@ -2005,6 +2022,41 @@ export default function Portal(){
                   <div style={{fontSize:32,marginBottom:10}}>📑</div>
                   <div style={{fontSize:14,fontWeight:600,color:QB.textPrimary,marginBottom:6}}>Select a property</div>
                   <div style={{fontSize:13,color:QB.textMuted}}>Choose a property and month to view invoice reconciliation</div>
+                </div>}
+
+                {/* Upload History Log */}
+                {reconProp&&reconUploadLog.length>0&&<div style={{...s.card,marginTop:16}}>
+                  <div style={{...s.cardTitle,marginBottom:12}}>📋 Upload History</div>
+                  <div style={{overflowX:"auto"}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                      <thead><tr style={{background:QB.bgSidebar}}>
+                        {["Sub-location","Month","Uploaded","By","Total","Invoiced","Not Invoiced","Coverage","Last Invoice No."].map(h=>(
+                          <th key={h} style={{...s.th,whiteSpace:"nowrap"}}>{h}</th>
+                        ))}
+                      </tr></thead>
+                      <tbody>
+                        {reconUploadLog.map((u,i)=>{
+                          const pct=u.total_lines>0?Math.round(u.invoiced_count/u.total_lines*100):0;
+                          return(
+                            <tr key={u.id} onClick={()=>{setReconMonth(u.report_month);loadReconLines(reconProp,u.report_month,reconSub,reconElement,reconStatus);loadReconSummary(reconProp,u.report_month);}}
+                              style={{background:reconMonth===u.report_month?QB.blueLight:i%2===0?QB.bgCard:QB.bgSidebar,cursor:"pointer",borderBottom:`1px solid ${QB.borderLight}`}}>
+                              <td style={s.td}>{u.sub_location||"—"}{reconMonth===u.report_month&&<span style={{fontSize:10,background:QB.blue,color:"#fff",borderRadius:8,padding:"1px 6px",marginLeft:6}}>Active</span>}</td>
+                              <td style={{...s.td,fontWeight:600,color:QB.textPrimary}}>{fmtMonth(u.report_month)}</td>
+                              <td style={{...s.td,color:QB.textMuted,fontSize:11}}>{u.upload_date?new Date(u.upload_date).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—"}</td>
+                              <td style={{...s.td,color:QB.textSecondary}}>{u.uploaded_by_name||"—"}</td>
+                              <td style={{...s.td,textAlign:"right",fontWeight:600}}>{u.total_lines}</td>
+                              <td style={{...s.td,textAlign:"right",color:QB.green,fontWeight:600}}>{u.invoiced_count}</td>
+                              <td style={{...s.td,textAlign:"right",color:"#C80C0F",fontWeight:600}}>{u.not_invoiced_count}</td>
+                              <td style={{...s.td,textAlign:"center"}}>
+                                <span style={{fontSize:11,fontWeight:700,color:pct>=90?QB.green:pct>=70?"#B45309":"#C80C0F"}}>{pct}%</span>
+                              </td>
+                              <td style={{...s.td,color:QB.textMuted,fontSize:11,fontFamily:"monospace"}}>—</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>}
               </div>}
 
