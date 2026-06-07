@@ -1127,6 +1127,7 @@ def save_recon_comment(data: dict, current_user=Depends(require_editor)):
 
 @app.get("/invoice-recon/summary")
 def get_invoice_summary(property_id: int, report_month: str,
+                        sub_location: str = None,
                         current_user=Depends(get_current_user)):
     """Calculate summary from actual lines filtered by month"""
     conn = get_db(); c = conn.cursor()
@@ -1142,7 +1143,8 @@ def get_invoice_summary(property_id: int, report_month: str,
         FROM invoice_lines
         WHERE property_id=%s
           AND DATE_TRUNC('month', ps_due_date) = DATE_TRUNC('month', %s::date)
-    """, (property_id, report_month + '-01'))
+          AND (%s IS NULL OR sub_location=%s)
+    """, (property_id, report_month + '-01', sub_location, sub_location))
     row = c.fetchone()
     current = [{
         "sub_location": "All",
@@ -1163,7 +1165,8 @@ def get_invoice_summary(property_id: int, report_month: str,
         FROM invoice_lines
         WHERE property_id=%s
           AND DATE_TRUNC('month', ps_due_date) = DATE_TRUNC('month', %s::date)
-    """, (property_id, prev_month + '-01'))
+          AND (%s IS NULL OR sub_location=%s)
+    """, (property_id, prev_month + '-01', sub_location, sub_location))
     prev = c.fetchone()
     if prev and prev["invoiced_count"] is not None:
         current[0]["delta_invoiced"] = current[0]["invoiced_count"] - (prev["invoiced_count"] or 0)
