@@ -160,6 +160,19 @@ export default function Portal(){
   const[rrHistory,setRrHistory]=useState([]);
   const[rrHistoryProp,setRrHistoryProp]=useState("");
   const[showRrHistory,setShowRrHistory]=useState(false);
+  const[reconProp,setReconProp]=useState("");
+  const[reconMonth,setReconMonth]=useState("");
+  const[reconSub,setReconSub]=useState("");
+  const[reconElement,setReconElement]=useState("");
+  const[reconStatus,setReconStatus]=useState("");
+  const[reconSearch,setReconSearch]=useState("");
+  const[reconLines,setReconLines]=useState([]);
+  const[reconSummary,setReconSummary]=useState([]);
+  const[reconMonths,setReconMonths]=useState([]);
+  const[reconLoading,setReconLoading]=useState(false);
+  const[reconDetail,setReconDetail]=useState(null);
+  const[reconComment,setReconComment]=useState({reason:"",notes:"",status:"open"});
+  const[uploadingRecon,setUploadingRecon]=useState(false);
   const[rrSubTab,setRrSubTab]=useState("leases");
   const[rrTabMonthly,setRrTabMonthly]=useState([]);
   const[rrTabMonths,setRrTabMonths]=useState([]);
@@ -440,6 +453,33 @@ export default function Portal(){
     if(params.length) url+="?"+params.join("&");
     const d=await apiFetch(url);
     if(d) setCustomers(d);
+  };
+
+  const loadReconLines=async(propId, month, sub, elem, status)=>{
+    if(!propId||!month) return;
+    setReconLoading(true);
+    let url=`/invoice-recon/lines?property_id=${propId}&report_month=${month}`;
+    if(sub) url+=`&sub_location=${encodeURIComponent(sub)}`;
+    if(elem) url+=`&element_group=${encodeURIComponent(elem)}`;
+    if(status) url+=`&status=${status}`;
+    const d=await apiFetch(url);
+    if(d) setReconLines(d);
+    setReconLoading(false);
+  };
+
+  const loadReconSummary=async(propId, month)=>{
+    if(!propId||!month) return;
+    const d=await apiFetch(`/invoice-recon/summary?property_id=${propId}&report_month=${month}`);
+    if(d) setReconSummary(d);
+  };
+
+  const loadReconMonths=async(propId)=>{
+    if(!propId) return;
+    const d=await apiFetch(`/invoice-recon/months?property_id=${propId}`);
+    if(d){
+      setReconMonths(d);
+      if(d.length>0&&!reconMonth){setReconMonth(d[0].report_month);}
+    }
   };
 
   const loadRrHistory=async(propId)=>{
@@ -1619,7 +1659,7 @@ export default function Portal(){
         ══════════════════════════════════════════════════════════════════ */}
         {tab==="rent-roll"&&(()=>{
           // Sub-tab bar
-          const rrSubTabs=[{id:"leases",label:"Lease Register"},{id:"log",label:"📋 Upload Log"}];
+          const rrSubTabs=[{id:"leases",label:"Lease Register"},{id:"recon",label:"📑 Invoice Recon"},{id:"log",label:"📋 Upload Log"}];
           // Collect all sub_locations for selected property
           const propRRs = rrTabProp ? (rentRolls[parseInt(rrTabProp)]||[]) : [];
           const subLocations = [...new Set(propRRs.map(r=>r.sub_location).filter(Boolean))];
@@ -1760,6 +1800,211 @@ export default function Portal(){
                   </div>
                 ):<div style={{textAlign:"center",padding:"30px",color:QB.textMuted,fontSize:13}}>
                   {rrHistoryProp?"No upload history found":"Select a property to view upload history"}
+                </div>}
+              </div>}
+
+              {/* Invoice Recon sub-tab */}
+              {rrSubTab==="recon"&&<div>
+                {/* Header + Upload */}
+                <div style={{...s.card,marginBottom:16}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,marginBottom:14}}>
+                    <div style={s.cardTitle}>Invoice Reconciliation</div>
+                    <label style={{...s.btnS,padding:"6px 14px",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                      📥 Upload Lease Summary
+                      <input type="file" accept=".xlsx" style={{display:"none"}} onChange={async e=>{
+                        const file=e.target.files[0]; if(!file||!reconProp||!reconMonth) return;
+                        setUploadingRecon(true);
+                        const fd=new FormData(); fd.append("file",file);
+                        fd.append("property_id",reconProp); fd.append("report_month",reconMonth);
+                        try{
+                          const token=localStorage.getItem("ca_token");
+                          const API=import.meta.env.VITE_API_URL||"http://localhost:8001";
+                          const res=await fetch(`${API}/invoice-recon/upload`,{method:"POST",headers:{Authorization:`Bearer ${token}`},body:fd});
+                          const r=await res.json();
+                          if(r.ok){flash(`Uploaded: ${r.invoiced_count} invoiced, ${r.not_invoiced_count} not invoiced`);
+                          loadReconLines(reconProp,reconMonth,reconSub,reconElement,reconStatus);
+                          loadReconSummary(reconProp,reconMonth);}
+                          else flash(r.detail||"Upload failed","error");
+                        }catch(ex){flash("Upload failed","error");}
+                        finally{setUploadingRecon(false);e.target.value="";}
+                      }}/>
+                    </label>
+                  </div>
+                  {/* Filters */}
+                  <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
+                    <div>
+                      <label style={s.label}>Property</label>
+                      <select style={{...s.input,width:150}} value={reconProp} onChange={e=>{
+                        setReconProp(e.target.value);setReconMonth("");setReconLines([]);setReconSummary([]);
+                        if(e.target.value) loadReconMonths(parseInt(e.target.value));
+                      }}>
+                        <option value="">Select...</option>
+                        {properties.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={s.label}>Month</label>
+                      <select style={{...s.input,width:150,color:QB.blue,fontWeight:600,borderColor:QB.blue}} value={reconMonth} onChange={e=>{
+                        setReconMonth(e.target.value);
+                        if(reconProp&&e.target.value){loadReconLines(reconProp,e.target.value,reconSub,reconElement,reconStatus);loadReconSummary(reconProp,e.target.value);}
+                      }}>
+                        <option value="">Select month...</option>
+                        {reconMonths.map(m=><option key={m.report_month+m.sub_location} value={m.report_month}>{fmtMonth(m.report_month)} {m.sub_location?`· ${m.sub_location}`:""}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={s.label}>Element Group</label>
+                      <select style={{...s.input,width:150}} value={reconElement} onChange={e=>{
+                        setReconElement(e.target.value);
+                        if(reconProp&&reconMonth) loadReconLines(reconProp,reconMonth,reconSub,e.target.value,reconStatus);
+                      }}>
+                        <option value="">All</option>
+                        <option value="Rent">Rent</option>
+                        <option value="Service Charge">Service Charge</option>
+                        <option value="Revenue Sharing">Revenue Sharing</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={s.label}>Status</label>
+                      <select style={{...s.input,width:140}} value={reconStatus} onChange={e=>{
+                        setReconStatus(e.target.value);
+                        if(reconProp&&reconMonth) loadReconLines(reconProp,reconMonth,reconSub,reconElement,e.target.value);
+                      }}>
+                        <option value="">All</option>
+                        <option value="invoiced">✅ Invoiced</option>
+                        <option value="not_invoiced">❌ Not invoiced</option>
+                      </select>
+                    </div>
+                    <div style={{flex:1,minWidth:160}}>
+                      <label style={s.label}>Search tenant</label>
+                      <input style={s.input} placeholder="Search..." value={reconSearch} onChange={e=>setReconSearch(e.target.value)}/>
+                    </div>
+                    {reconSearch&&<button style={{...s.btnS,padding:"8px 10px",fontSize:12}} onClick={()=>setReconSearch("")}>✕</button>}
+                  </div>
+                </div>
+
+                {/* KPI Summary */}
+                {reconSummary.length>0&&(()=>{
+                  const tot=reconSummary.reduce((a,r)=>({
+                    total_lines:a.total_lines+r.total_lines,
+                    invoiced_count:a.invoiced_count+r.invoiced_count,
+                    not_invoiced_count:a.not_invoiced_count+r.not_invoiced_count,
+                    invoiced_amount:a.invoiced_amount+parseFloat(r.invoiced_amount||0),
+                    not_invoiced_amount:a.not_invoiced_amount+parseFloat(r.not_invoiced_amount||0),
+                    delta_invoiced:(a.delta_invoiced??0)+(r.delta_invoiced??0),
+                    delta_not_invoiced:(a.delta_not_invoiced??0)+(r.delta_not_invoiced??0),
+                  }),{total_lines:0,invoiced_count:0,not_invoiced_count:0,invoiced_amount:0,not_invoiced_amount:0,delta_invoiced:0,delta_not_invoiced:0});
+                  const pct=tot.total_lines>0?Math.round(tot.invoiced_count/tot.total_lines*100):0;
+                  return(
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+                      <div style={{...s.card,marginBottom:0,textAlign:"center",padding:"14px"}}>
+                        <div style={{fontSize:10,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em",marginBottom:4}}>Total lines</div>
+                        <div style={{fontSize:20,fontWeight:700,color:QB.textPrimary}}>{tot.total_lines}</div>
+                      </div>
+                      <div style={{...s.card,marginBottom:0,textAlign:"center",padding:"14px",border:`1px solid #B7E5B0`,background:"#F2FBF0"}}>
+                        <div style={{fontSize:10,color:"#2CA01C",textTransform:"uppercase",letterSpacing:".07em",marginBottom:4}}>✅ Invoiced</div>
+                        <div style={{fontSize:20,fontWeight:700,color:"#2CA01C"}}>{tot.invoiced_count} <span style={{fontSize:13}}>({pct}%)</span></div>
+                        <div style={{fontSize:11,color:"#2CA01C",marginTop:2}}>EGP {fmtShort(tot.invoiced_amount)}</div>
+                        {tot.delta_invoiced!==null&&tot.delta_invoiced!==0&&<div style={{fontSize:10,color:"#2CA01C",marginTop:2}}>{tot.delta_invoiced>0?"+":""}{tot.delta_invoiced} vs last month</div>}
+                      </div>
+                      <div style={{...s.card,marginBottom:0,textAlign:"center",padding:"14px",border:`1px solid #FECACA`,background:"#FEF2F2"}}>
+                        <div style={{fontSize:10,color:"#C80C0F",textTransform:"uppercase",letterSpacing:".07em",marginBottom:4}}>❌ Not invoiced</div>
+                        <div style={{fontSize:20,fontWeight:700,color:"#C80C0F"}}>{tot.not_invoiced_count}</div>
+                        <div style={{fontSize:11,color:"#C80C0F",marginTop:2}}>EGP {fmtShort(tot.not_invoiced_amount)}</div>
+                        {tot.delta_not_invoiced!==null&&tot.delta_not_invoiced!==0&&<div style={{fontSize:10,color:"#C80C0F",marginTop:2}}>{tot.delta_not_invoiced>0?"+":""}{tot.delta_not_invoiced} vs last month</div>}
+                      </div>
+                      <div style={{...s.card,marginBottom:0,textAlign:"center",padding:"14px"}}>
+                        <div style={{fontSize:10,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em",marginBottom:4}}>Coverage</div>
+                        <div style={{fontSize:20,fontWeight:700,color:pct>=90?QB.green:pct>=70?"#B45309":"#C80C0F"}}>{pct}%</div>
+                        <div style={{marginTop:6,height:6,background:QB.borderLight,borderRadius:3,overflow:"hidden"}}>
+                          <div style={{height:"100%",width:`${pct}%`,background:pct>=90?QB.green:pct>=70?"#B45309":"#C80C0F",borderRadius:3,transition:"width .3s"}}/>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Table */}
+                {reconProp&&reconMonth&&(()=>{
+                  const filtered=reconLines.filter(l=>{
+                    if(!reconSearch) return true;
+                    const q=reconSearch.toLowerCase();
+                    return (l.brand||"").toLowerCase().includes(q)||(l.customer_name||"").toLowerCase().includes(q)||(l.unit||"").toLowerCase().includes(q);
+                  });
+                  const exportExcel=()=>{
+                    const headers=["Brand","Customer Name","Unit","Unit Type","Element Group","Expected (EGP)","Invoiced (EGP)","Invoice No.","Status","Reason","Notes"];
+                    const rows=filtered.map(l=>[
+                      l.brand||"",l.customer_name||"",l.unit||"",l.unit_type||"",l.element_group||"",
+                      parseFloat(l.ps_amount||0).toFixed(2),
+                      parseFloat(l.ps_revenue_amount||0).toFixed(2),
+                      l.invoice_no||"",
+                      l.ps_invoiced_flag==="Y"?"Invoiced":"Not Invoiced",
+                      l.reason||"",l.notes||""
+                    ]);
+                    const csv=[headers,...rows].map(r=>r.map(v=>String(v).includes(",")?`"${v}"`:v).join(",")).join("\n");
+                    const blob=new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8;"});
+                    const url=URL.createObjectURL(blob);
+                    const a=document.createElement("a");
+                    a.href=url;a.download=`InvoiceRecon_${properties.find(p=>String(p.id)===String(reconProp))?.name||""}_${reconMonth}.csv`;
+                    document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+                  };
+                  return(
+                    <div style={s.card}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                        <div style={s.cardTitle}>Detail — {filtered.length} records</div>
+                        <button style={{...s.btnS,padding:"6px 14px",fontSize:12}} onClick={exportExcel}>📊 Export Excel</button>
+                      </div>
+                      {reconLoading?<div style={{textAlign:"center",padding:"30px",color:QB.textMuted}}>Loading...</div>
+                      :filtered.length===0?<div style={{textAlign:"center",padding:"30px",color:QB.textMuted,fontSize:13}}>No records found</div>
+                      :(
+                        <div style={{overflowX:"auto",maxHeight:520,overflowY:"auto"}}>
+                          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                            <thead style={{position:"sticky",top:0,zIndex:5}}>
+                              <tr style={{background:QB.bgSidebar}}>
+                                {["Brand","Unit","Element","Expected","Invoiced","Invoice No.","Status","Comment"].map(h=>(
+                                  <th key={h} style={{padding:"9px 10px",textAlign:"left",fontSize:10,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".06em",borderBottom:`2px solid ${QB.borderCard}`,whiteSpace:"nowrap"}}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filtered.map((l,i)=>{
+                                const invoiced=l.ps_invoiced_flag==="Y";
+                                return(
+                                  <tr key={l.id} onClick={()=>{setReconDetail(l);setReconComment({reason:l.reason||"",notes:l.notes||"",status:l.comment_status||"open"});}}
+                                    style={{background:invoiced?(i%2===0?QB.bgCard:QB.bgSidebar):(i%2===0?"#FEF2F2":"#FFF5F5"),cursor:"pointer",borderBottom:`1px solid ${QB.borderLight}`}}
+                                    onMouseEnter={e=>e.currentTarget.style.background=QB.blueLight}
+                                    onMouseLeave={e=>e.currentTarget.style.background=invoiced?(i%2===0?QB.bgCard:QB.bgSidebar):(i%2===0?"#FEF2F2":"#FFF5F5")}>
+                                    <td style={{padding:"8px 10px",fontWeight:600,color:QB.textPrimary,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.brand||l.customer_name||"—"}</td>
+                                    <td style={{padding:"8px 10px",color:QB.textSecondary,whiteSpace:"nowrap"}}>{l.unit||"—"}</td>
+                                    <td style={{padding:"8px 10px"}}><span style={{padding:"2px 7px",borderRadius:10,fontSize:10,background:l.element_group==="Rent"?QB.blueLight:QB.bgSidebar,color:l.element_group==="Rent"?QB.blue:QB.textSecondary,border:`1px solid ${l.element_group==="Rent"?QB.blue+"33":QB.borderLight}`}}>{l.element_group||"—"}</span></td>
+                                    <td style={{padding:"8px 10px",textAlign:"right",color:QB.textPrimary,fontWeight:500,whiteSpace:"nowrap"}}>EGP {fmtShort(l.ps_amount)}</td>
+                                    <td style={{padding:"8px 10px",textAlign:"right",fontWeight:600,color:invoiced?QB.green:"#C80C0F",whiteSpace:"nowrap"}}>{invoiced?`EGP ${fmtShort(l.ps_revenue_amount)}`:"—"}</td>
+                                    <td style={{padding:"8px 10px",color:QB.textMuted,fontSize:11,fontFamily:"monospace",whiteSpace:"nowrap"}}>{l.invoice_no||"—"}</td>
+                                    <td style={{padding:"8px 10px"}}>
+                                      {invoiced
+                                        ?<span style={{padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:600,background:"#F2FBF0",color:"#2CA01C",border:"1px solid #B7E5B0"}}>✅ Invoiced</span>
+                                        :<span style={{padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:600,background:"#FEF2F2",color:"#C80C0F",border:"1px solid #FECACA"}}>❌ Not invoiced</span>
+                                      }
+                                    </td>
+                                    <td style={{padding:"8px 10px",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                      {l.reason?<span style={{fontSize:11,color:"#B45309",background:"#FFFBEB",padding:"2px 6px",borderRadius:8}}>{l.reason}</span>
+                                      :<span style={{fontSize:11,color:QB.textMuted}}>—</span>}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {!reconProp&&<div style={{...s.card,textAlign:"center",padding:"50px"}}>
+                  <div style={{fontSize:32,marginBottom:10}}>📑</div>
+                  <div style={{fontSize:14,fontWeight:600,color:QB.textPrimary,marginBottom:6}}>Select a property</div>
+                  <div style={{fontSize:13,color:QB.textMuted}}>Choose a property and month to view invoice reconciliation</div>
                 </div>}
               </div>}
 
@@ -3013,6 +3258,85 @@ export default function Portal(){
               }}>{editCustomer?"Save changes":"Add customer"}</button>
               <button style={s.btnS} onClick={()=>setShowCustomerForm(false)}>Cancel</button>
             </div>
+          </div>
+        </div>}
+
+        {/* Invoice Recon Line Detail Modal */}
+        {reconDetail&&<div style={s.overlay} onClick={()=>setReconDetail(null)}>
+          <div style={{...s.modal,width:540}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+              <div>
+                <div style={{fontSize:15,fontWeight:700,color:QB.textPrimary}}>{reconDetail.brand||reconDetail.customer_name}</div>
+                <div style={{fontSize:12,color:QB.textMuted}}>{reconDetail.unit} · {reconDetail.element_group} · {reconDetail.report_month}</div>
+              </div>
+              <button onClick={()=>setReconDetail(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:QB.textMuted}}>✕</button>
+            </div>
+
+            {/* Details grid */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+              {[
+                {label:"Expected",value:`EGP ${fmtShort(reconDetail.ps_amount)}`,color:QB.textPrimary},
+                {label:"Invoiced Amount",value:reconDetail.ps_revenue_amount>0?`EGP ${fmtShort(reconDetail.ps_revenue_amount)}`:"—",color:reconDetail.ps_invoiced_flag==="Y"?QB.green:"#C80C0F"},
+                {label:"Invoice No.",value:reconDetail.invoice_no||"—",color:QB.textMuted},
+                {label:"Unit Type",value:reconDetail.unit_type||"—",color:QB.textSecondary},
+                {label:"Lease Start",value:reconDetail.lease_start?new Date(reconDetail.lease_start).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—",color:QB.textSecondary},
+                {label:"Lease End",value:reconDetail.lease_end?new Date(reconDetail.lease_end).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—",color:QB.textSecondary},
+              ].map(({label,value,color})=>(
+                <div key={label} style={{padding:"10px 12px",background:QB.bgSidebar,borderRadius:QB.radiusMD,border:`1px solid ${QB.borderLight}`}}>
+                  <div style={{fontSize:10,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em",marginBottom:3}}>{label}</div>
+                  <div style={{fontSize:13,fontWeight:600,color}}>{value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Status badge */}
+            <div style={{marginBottom:16,textAlign:"center"}}>
+              {reconDetail.ps_invoiced_flag==="Y"
+                ?<span style={{padding:"6px 16px",borderRadius:20,fontSize:13,fontWeight:700,background:"#F2FBF0",color:"#2CA01C",border:"1px solid #B7E5B0"}}>✅ Invoiced</span>
+                :<span style={{padding:"6px 16px",borderRadius:20,fontSize:13,fontWeight:700,background:"#FEF2F2",color:"#C80C0F",border:"1px solid #FECACA"}}>❌ Not Invoiced</span>
+              }
+            </div>
+
+            {/* Comment section — only for not invoiced */}
+            {reconDetail.ps_invoiced_flag==="N"&&<div style={{borderTop:`1px solid ${QB.borderLight}`,paddingTop:14}}>
+              <div style={{fontSize:13,fontWeight:600,color:QB.textPrimary,marginBottom:10}}>Comment</div>
+              <div style={{marginBottom:10}}>
+                <label style={s.label}>Reason</label>
+                <select style={s.input} value={reconComment.reason} onChange={e=>setReconComment(c=>({...c,reason:e.target.value}))}>
+                  <option value="">Select reason...</option>
+                  {["Cancellation","Amendment Request","Missing Tax Data","Grace Period","Under Review","Dispute","Other"].map(r=>(
+                    <option key={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{marginBottom:10}}>
+                <label style={s.label}>Notes</label>
+                <textarea style={{...s.input,minHeight:64,resize:"vertical"}} placeholder="Additional details..." value={reconComment.notes} onChange={e=>setReconComment(c=>({...c,notes:e.target.value}))}/>
+              </div>
+              <div style={{marginBottom:14}}>
+                <label style={s.label}>Status</label>
+                <select style={s.input} value={reconComment.status} onChange={e=>setReconComment(c=>({...c,status:e.target.value}))}>
+                  <option value="open">Open</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="pending">Pending</option>
+                </select>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button style={s.btnP} onClick={async()=>{
+                  await apiFetch("/invoice-recon/comments",{method:"POST",body:JSON.stringify({line_id:reconDetail.id,...reconComment})});
+                  flash("Comment saved");
+                  // Refresh lines
+                  loadReconLines(reconProp,reconMonth,reconSub,reconElement,reconStatus);
+                  setReconDetail(null);
+                }}>Save comment</button>
+                <button style={s.btnS} onClick={()=>setReconDetail(null)}>Cancel</button>
+              </div>
+            </div>}
+
+            {/* Existing comment display */}
+            {reconDetail.ps_invoiced_flag==="Y"&&reconDetail.reason&&<div style={{borderTop:`1px solid ${QB.borderLight}`,paddingTop:12,marginTop:4}}>
+              <div style={{fontSize:12,color:QB.textMuted}}>Comment: <strong>{reconDetail.reason}</strong>{reconDetail.notes&&` — ${reconDetail.notes}`}</div>
+            </div>}
           </div>
         </div>}
 
