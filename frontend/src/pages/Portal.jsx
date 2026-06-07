@@ -479,9 +479,11 @@ export default function Portal(){
     setReconLoading(false);
   };
 
-  const loadReconSummary=async(propId, month)=>{
+  const loadReconSummary=async(propId, month, sub)=>{
     if(!propId||!month) return;
-    const d=await apiFetch(`/invoice-recon/summary?property_id=${propId}&report_month=${month}`);
+    let url=`/invoice-recon/summary?property_id=${propId}&report_month=${month}`;
+    if(sub) url+=`&sub_location=${encodeURIComponent(sub)}`;
+    const d=await apiFetch(url);
     if(d) setReconSummary(d);
   };
 
@@ -1843,7 +1845,7 @@ export default function Portal(){
                             await loadReconMonths(parseInt(reconProp));
                             setReconMonth(reconUploadMonth);
                             loadReconLines(reconProp,reconUploadMonth,reconSub,reconElement,reconStatus);
-                            loadReconSummary(reconProp,reconUploadMonth);
+                            loadReconSummary(reconProp,reconUploadMonth,reconSub||"");
                           }else flash(r.detail||"Upload failed","error");
                         }catch(ex){flash("Upload failed","error");}
                         finally{setUploadingRecon(false);e.target.value="";}
@@ -1865,12 +1867,16 @@ export default function Portal(){
                     </div>
                     <div>
                       <label style={s.label}>Month</label>
-                      <select style={{...s.input,width:150,color:QB.blue,fontWeight:600,borderColor:QB.blue}} value={reconMonth} onChange={e=>{
-                        setReconMonth(e.target.value);
-                        if(reconProp&&e.target.value){loadReconLines(reconProp,e.target.value,reconSub,reconElement,reconStatus);loadReconSummary(reconProp,e.target.value);}
+                      <select style={{...s.input,width:150,color:QB.blue,fontWeight:600,borderColor:QB.blue}} value={reconMonth+(reconSub?"|"+reconSub:"|")} onChange={e=>{
+                        const [month,sub]=(e.target.value||"").split("|");
+                        setReconMonth(month||""); setReconSub(sub||"");
+                        if(reconProp&&month){
+                          loadReconLines(reconProp,month,sub||"",reconElement,reconStatus);
+                          loadReconSummary(reconProp,month,sub||"");
+                        }
                       }}>
                         <option value="">Select month...</option>
-                        {reconMonths.map(m=><option key={m.report_month+m.sub_location} value={m.report_month}>{fmtMonth(m.report_month)} {m.sub_location?`· ${m.sub_location}`:""}</option>)}
+                        {reconMonths.map(m=><option key={m.report_month+m.sub_location} value={`${m.report_month}|${m.sub_location||""}`}>{fmtMonth(m.report_month)} {m.sub_location?`· ${m.sub_location}`:""}</option>)}
                       </select>
                     </div>
                     <div>
@@ -2049,8 +2055,8 @@ export default function Portal(){
                         {reconUploadLog.map((u,i)=>{
                           const pct=u.total_lines>0?Math.round(u.invoiced_count/u.total_lines*100):0;
                           return(
-                            <tr key={u.id} onClick={()=>{setReconMonth(u.report_month);loadReconLines(reconProp,u.report_month,reconSub,reconElement,reconStatus);loadReconSummary(reconProp,u.report_month);}}
-                              style={{background:reconMonth===u.report_month?QB.blueLight:i%2===0?QB.bgCard:QB.bgSidebar,cursor:"pointer",borderBottom:`1px solid ${QB.borderLight}`}}>
+                            <tr key={u.id} onClick={()=>{setReconMonth(u.report_month);setReconSub(u.sub_location||"");loadReconLines(reconProp,u.report_month,u.sub_location||"",reconElement,reconStatus);loadReconSummary(reconProp,u.report_month,u.sub_location||"");}}
+                              style={{background:reconMonth===u.report_month&&(reconSub||"")===(u.sub_location||"")?QB.blueLight:i%2===0?QB.bgCard:QB.bgSidebar,cursor:"pointer",borderBottom:`1px solid ${QB.borderLight}`}}>
                               <td style={s.td}>{u.sub_location||"—"}{reconMonth===u.report_month&&<span style={{fontSize:10,background:QB.blue,color:"#fff",borderRadius:8,padding:"1px 6px",marginLeft:6}}>Active</span>}</td>
                               <td style={{...s.td,fontWeight:600,color:QB.textPrimary}}>{fmtMonth(u.report_month)}</td>
                               <td style={{...s.td,color:QB.textMuted,fontSize:11}}>{u.upload_date?new Date(u.upload_date).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):"—"}</td>
