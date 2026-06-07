@@ -942,11 +942,9 @@ async def upload_invoice_recon(
     if 'Document Status' in df.columns:
         df = df[df['Document Status'].isin(['Approved','Active'])]
 
-    # Filter by PS Due Date month
+    # Parse dates
     if 'PS Due Date' in df.columns:
         df['PS Due Date'] = pd.to_datetime(df['PS Due Date'], errors='coerce')
-        target = pd.to_datetime(report_month + '-01')
-        df = df[df['PS Due Date'].dt.to_period('M') == target.to_period('M')]
 
     # Filter element groups
     relevant = ['Rent','Service Charge','Revenue Sharing','Revenue Sharing ']
@@ -954,7 +952,14 @@ async def upload_invoice_recon(
         df = df[df['Element Group'].isin(relevant)]
 
     if len(df) == 0:
-        raise HTTPException(400, f"No matching records found for {report_month}")
+        raise HTTPException(400, "No matching records found")
+
+    # Auto-detect sub_location from Project column BEFORE filtering
+    if not sub_location and 'Project' in df.columns:
+        projs = df['Project'].dropna().unique()
+        projs = [p for p in projs if str(p).strip().lower() not in ('total','nan','none')]
+        if len(projs) == 1:
+            sub_location = str(projs[0]).strip()
 
     def safe_float(v):
         try: return float(v) if pd.notna(v) else 0.0
@@ -976,15 +981,19 @@ async def upload_invoice_recon(
         if len(projs) == 1:
             sub_location = str(projs[0]).strip()
 
-    invoiced = df[df['PS Invoiced Flag']=='Y']
-    not_invoiced = df[df['PS Invoiced Flag']=='N']
+    # Filter for target month for summary KPIs
+    target = pd.to_datetime(report_month + '-01')
+    month_df = df[df['PS Due Date'].dt.to_period('M') == target.to_period('M')] if 'PS Due Date' in df.columns else df
+
+    invoiced_m = month_df[month_df['PS Invoiced Flag']=='Y']
+    not_invoiced_m = month_df[month_df['PS Invoiced Flag']=='N']
 
     summary = {
-        'total_lines': len(df),
-        'invoiced_count': len(invoiced),
-        'not_invoiced_count': len(not_invoiced),
-        'invoiced_amount': float(invoiced['PS Revenue Amount'].fillna(0).sum()),
-        'not_invoiced_amount': float(not_invoiced['PS Amount'].fillna(0).sum()),
+        'total_lines': len(month_df),
+        'invoiced_count': len(invoiced_m),
+        'not_invoiced_count': len(not_invoiced_m),
+        'invoiced_amount': float(invoiced_m['PS Amount'].fillna(0).sum()),
+        'not_invoiced_amount': float(not_invoiced_m['PS Amount'].fillna(0).sum()),
     }
 
     conn = get_db(); c = conn.cursor()
@@ -1003,28 +1012,31 @@ async def upload_invoice_recon(
          summary['invoiced_amount'], summary['not_invoiced_amount']))
     upload_id = c.fetchone()["id"]
 
+    # Store all rows (YTD) using batch insert
+    rows_data = []
     for _, row in df.iterrows():
-        c.execute("""INSERT INTO invoice_lines
+        due = safe_date(row.get('PS Due Date'))
+        # Get row-level sub_location from Project column
+        row_sub = safe_str(row.get('Project', sub_location)) or sub_location
+        if row_sub.lower() in ('nan','none',''): row_sub = sub_location
+        # PS Amount is the invoice amount (PS Revenue Amount is always 0)
+        rows_data.append((
+            upload_id, property_id, row_sub, report_month,
+            safe_str(row.get('Document No','')), safe_str(row.get('Unit','')),
+            safe_str(row.get('Unit Type','')), safe_str(row.get('Customer Name','')),
+            safe_str(row.get('Brand','')), safe_str(row.get('Element Group','')),
+            due, safe_float(row.get('PS Amount',0)), safe_float(row.get('PS Paid Amount',0)),
+            safe_str(row.get('PS Invoiced Flag','N')), safe_float(row.get('PS Amount',0)),
+            safe_str(row.get('Invoice No.','')),
+            safe_date(row.get('Lease Start Date')), safe_date(row.get('Lease End Date')),
+            safe_str(row.get('Document Status',''))
+        ))
+    psycopg2.extras.execute_values(c,
+        """INSERT INTO invoice_lines
             (upload_id,property_id,sub_location,report_month,document_no,unit,unit_type,
              customer_name,brand,element_group,ps_due_date,ps_amount,ps_paid_amount,
              ps_invoiced_flag,ps_revenue_amount,invoice_no,lease_start,lease_end,document_status)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-            (upload_id, property_id, sub_location, report_month,
-             safe_str(row.get('Document No','')),
-             safe_str(row.get('Unit','')),
-             safe_str(row.get('Unit Type','')),
-             safe_str(row.get('Customer Name','')),
-             safe_str(row.get('Brand','')),
-             safe_str(row.get('Element Group','')),
-             safe_date(row.get('PS Due Date')),
-             safe_float(row.get('PS Amount',0)),
-             safe_float(row.get('PS Paid Amount',0)),
-             safe_str(row.get('PS Invoiced Flag','N')),
-             safe_float(row.get('PS Revenue Amount',0)),
-             safe_str(row.get('Invoice No.','')),
-             safe_date(row.get('Lease Start Date')),
-             safe_date(row.get('Lease End Date')),
-             safe_str(row.get('Document Status',''))))
+           VALUES %s""", rows_data)
 
     log_activity(conn, current_user["id"], "uploaded invoice recon", "invoice",
                  f"{sub_location} {report_month}",
@@ -1061,8 +1073,9 @@ def get_invoice_lines(
            FROM invoice_lines l
            LEFT JOIN recon_comments rc ON rc.line_id=l.id
            LEFT JOIN ca_users usr ON rc.created_by=usr.id
-           WHERE l.property_id=%s AND l.report_month=%s"""
-    params = [property_id, report_month]
+           WHERE l.property_id=%s AND l.report_month=%s
+             AND DATE_TRUNC('month', l.ps_due_date) = DATE_TRUNC('month', %s::date)"""
+    params = [property_id, report_month, report_month + '-01']
     if sub_location: q += " AND l.sub_location=%s"; params.append(sub_location)
     if element_group: q += " AND l.element_group=%s"; params.append(element_group)
     if status == "invoiced": q += " AND l.ps_invoiced_flag='Y'"
