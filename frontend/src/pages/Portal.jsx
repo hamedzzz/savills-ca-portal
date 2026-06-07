@@ -1889,7 +1889,6 @@ export default function Portal(){
                         <option value="">All</option>
                         <option value="Rent">Rent</option>
                         <option value="Service Charge">Service Charge</option>
-                        <option value="Revenue Sharing">Revenue Sharing</option>
                       </select>
                     </div>
                     <div>
