@@ -710,9 +710,9 @@ export default function Portal(){
         {/* Logo */}
         <div style={{padding:"0 16px",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.1)",height:64,flexShrink:0}}>
           <SavillsLogo size={28}/>
-          <div style={{fontSize:12,fontWeight:600,color:"#fff",whiteSpace:"nowrap",lineHeight:1.3}}>
-            Savills Egypt CA<br/>
-            <span style={{fontSize:10,color:"rgba(255,255,255,0.5)",fontWeight:400}}>Property Management</span>
+          <div style={{lineHeight:1.4}}>
+            <div style={{fontSize:12,fontWeight:600,color:"#fff",whiteSpace:"nowrap"}}>Savills Egypt CA</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",fontWeight:400,whiteSpace:"nowrap"}}>Property Management</div>
           </div>
         </div>
 
