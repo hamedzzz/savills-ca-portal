@@ -583,9 +583,9 @@ export default function Portal(){
   // ── Styles ──────────────────────────────────────────────────────────────────
   const SIDEBAR_W=220;const SIDEBAR_C=60;
   const s={
-    sidebar:{position:"fixed",top:0,left:0,height:"100vh",width:SIDEBAR_C,background:"#1A2332",display:"flex",flexDirection:"column",zIndex:100,transition:"width 0.2s ease",overflow:"hidden",boxShadow:"2px 0 8px rgba(0,0,0,0.15)"},
-    topbar:{position:"fixed",top:0,left:SIDEBAR_C,right:0,height:56,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 24px",background:QB.bgCard,borderBottom:`1px solid ${QB.borderCard}`,boxShadow:"0 1px 3px rgba(0,0,0,0.06)",zIndex:50,transition:"left 0.2s ease"},
-    wrap:{marginLeft:SIDEBAR_C,marginTop:56,padding:"24px 28px 40px",fontFamily:QB.fontFamily,minHeight:"calc(100vh - 56px)",transition:"margin-left 0.2s ease"},
+    sidebar:{position:"fixed",top:0,left:0,height:"100vh",width:220,background:"#1A2332",display:"flex",flexDirection:"column",zIndex:100,overflow:"hidden",boxShadow:"2px 0 8px rgba(0,0,0,0.15)"},
+    topbar:{position:"fixed",top:0,left:220,right:0,height:56,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 24px",background:QB.bgCard,borderBottom:`1px solid ${QB.borderCard}`,boxShadow:"0 1px 3px rgba(0,0,0,0.06)",zIndex:50,transition:"left 0.2s ease"},
+    wrap:{marginLeft:220,marginTop:56,padding:"24px 28px 40px",fontFamily:QB.fontFamily,minHeight:"calc(100vh - 56px)",transition:"margin-left 0.2s ease"},
     tabBar:{display:"flex",gap:0,borderBottom:`2px solid ${QB.borderLight}`,marginBottom:24,marginTop:24},
     tab:(a)=>({padding:"10px 18px",fontSize:13,fontWeight:a?600:400,border:"none",borderBottom:a?`2px solid ${QB.blue}`:"2px solid transparent",marginBottom:-2,background:"transparent",color:a?QB.blue:QB.textSecondary,cursor:"pointer",fontFamily:QB.fontFamily}),
     card:{background:QB.bgCard,border:`1px solid ${QB.borderCard}`,borderRadius:QB.radiusLG,padding:"20px 24px",marginBottom:16,boxShadow:QB.shadowCard},
