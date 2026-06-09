@@ -739,7 +739,7 @@ export default function Portal(){
                   onClick={()=>{setHomeExpanded(v=>!v);if(!active)setTab("collection");}}>
                   <span style={{fontSize:18,width:24,textAlign:"center",flexShrink:0}}>{icon}</span>
                   <><span style={{fontSize:13,fontWeight:active?600:400,whiteSpace:"nowrap",flex:1}}>{label}</span>
-                  <span style={{fontSize:10,opacity:0.5}}>{homeExpanded?"▲":"▼"}</span>
+                  <span style={{fontSize:10,opacity:0.5}}>{homeExpanded?"▲":"▼"}</span></>
                 </div>
                 {homeExpanded&&items.map(({t,icon:ic,label:lb})=>(
                   <div key={t} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 18px 8px 54px",cursor:"pointer",
@@ -786,7 +786,7 @@ export default function Portal(){
                   onClick={()=>{setAdminExpanded(v=>!v);if(!adminActive)setTab("users");}}>
                   <span style={{fontSize:18,width:24,textAlign:"center",flexShrink:0}}>⚙️</span>
                   <><span style={{fontSize:13,fontWeight:adminActive?600:400,whiteSpace:"nowrap",flex:1}}>Admin</span>
-                  <span style={{fontSize:10,opacity:0.5}}>{adminExpanded?"▲":"▼"}</span>
+                  <span style={{fontSize:10,opacity:0.5}}>{adminExpanded?"▲":"▼"}</span></>
                 </div>
                 {adminExpanded&&[
                   {t:"users",icon:"👥",label:"Users"},
