@@ -708,11 +708,11 @@ export default function Portal(){
       <div style={{...s.sidebar,width:220}}>
 
         {/* Logo */}
-        <div style={{padding:"14px 16px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid rgba(255,255,255,0.1)",minHeight:64}}>
+        <div style={{padding:"0 16px",display:"flex",alignItems:"center",gap:12,borderBottom:"1px solid rgba(255,255,255,0.1)",height:64,flexShrink:0}}>
           <SavillsLogo size={28}/>
-          <div style={{overflow:"hidden"}}>
-            <div style={{fontSize:12,fontWeight:700,color:"#FEDE07",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Savills Egypt CA</div>
-            <div style={{fontSize:10,color:"rgba(255,255,255,0.45)",whiteSpace:"nowrap"}}>Client Accounting</div>
+          <div style={{fontSize:12,fontWeight:600,color:"#fff",whiteSpace:"nowrap",lineHeight:1.3}}>
+            Savills Egypt CA<br/>
+            <span style={{fontSize:10,color:"rgba(255,255,255,0.5)",fontWeight:400}}>Property Management</span>
           </div>
         </div>
 
@@ -732,14 +732,14 @@ export default function Portal(){
               <div key={section}>
                 <div style={{display:"flex",alignItems:"center",gap:14,padding:"11px 18px",cursor:"pointer",
                   color:active?"#fff":hov?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.55)",
-                  background:active&&!sidebarOpen?"rgba(0,119,197,0.2)":hov?"rgba(255,255,255,0.06)":"transparent",
+                  background:active?"rgba(0,119,197,0.2)":hov?"rgba(255,255,255,0.06)":"transparent",
                   borderLeft:active?`3px solid ${QB.blue}`:"3px solid transparent",transition:"all 0.15s",minHeight:44}}
                   onMouseEnter={()=>setNavHover(section)}
                   onMouseLeave={()=>setNavHover("")}
                   onClick={()=>{setHomeExpanded(v=>!v);if(!active)setTab("collection");}}>
                   <span style={{fontSize:18,width:24,textAlign:"center",flexShrink:0}}>{icon}</span>
                   <><span style={{fontSize:13,fontWeight:active?600:400,whiteSpace:"nowrap",flex:1}}>{label}</span>
-                  <span style={{fontSize:10,opacity:0.5}}>{homeExpanded?"▲":"▼"}</span></>}
+                  <span style={{fontSize:10,opacity:0.5}}>{homeExpanded?"▲":"▼"}</span>
                 </div>
                 {homeExpanded&&items.map(({t,icon:ic,label:lb})=>(
                   <div key={t} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 18px 8px 54px",cursor:"pointer",
@@ -767,7 +767,7 @@ export default function Portal(){
               onMouseLeave={()=>setNavHover("")}
               onClick={()=>setTab(t)}>
               <span style={{fontSize:18,width:24,textAlign:"center",flexShrink:0}}>{icon}</span>
-              {sidebarOpen&&<span style={{fontSize:13,fontWeight:tab===t?600:400,whiteSpace:"nowrap"}}>{label}</span>}
+              <span style={{fontSize:13,fontWeight:tab===t?600:400,whiteSpace:"nowrap",color:"inherit"}}>{label}</span>
             </div>
           ))}
 
@@ -779,14 +779,14 @@ export default function Portal(){
               <div>
                 <div style={{display:"flex",alignItems:"center",gap:14,padding:"11px 18px",cursor:"pointer",
                   color:adminActive?"#fff":navHover==="admin"?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.55)",
-                  background:adminActive&&!sidebarOpen?"rgba(0,119,197,0.2)":navHover==="admin"?"rgba(255,255,255,0.06)":"transparent",
+                  background:adminActive?"rgba(0,119,197,0.2)":navHover==="admin"?"rgba(255,255,255,0.06)":"transparent",
                   borderLeft:adminActive?`3px solid ${QB.blue}`:"3px solid transparent",transition:"all 0.15s",minHeight:44}}
                   onMouseEnter={()=>setNavHover("admin")}
                   onMouseLeave={()=>setNavHover("")}
                   onClick={()=>{setAdminExpanded(v=>!v);if(!adminActive)setTab("users");}}>
                   <span style={{fontSize:18,width:24,textAlign:"center",flexShrink:0}}>⚙️</span>
                   <><span style={{fontSize:13,fontWeight:adminActive?600:400,whiteSpace:"nowrap",flex:1}}>Admin</span>
-                  <span style={{fontSize:10,opacity:0.5}}>{adminExpanded?"▲":"▼"}</span></>}
+                  <span style={{fontSize:10,opacity:0.5}}>{adminExpanded?"▲":"▼"}</span>
                 </div>
                 {adminExpanded&&[
                   {t:"users",icon:"👥",label:"Users"},
@@ -825,7 +825,7 @@ export default function Portal(){
             onMouseLeave={()=>setNavHover("")}
             onClick={()=>setShowProfile(true)}>
             <Avatar name={user?.full_name||"U"} size={22}/>
-            <span style={{fontSize:13,whiteSpace:"nowrap",color:"rgba(255,255,255,0.7)"}}>{user?.full_name?.split(" ")[0]||"You"}</span>}
+            <span style={{fontSize:13,whiteSpace:"nowrap",color:"rgba(255,255,255,0.7)"}}>{user?.full_name?.split(" ")[0]||"You"}</span>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:14,padding:"11px 18px",cursor:"pointer",
             color:navHover==="out"?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.4)",
@@ -835,7 +835,7 @@ export default function Portal(){
             onMouseLeave={()=>setNavHover("")}
             onClick={logout}>
             <span style={{fontSize:18,width:24,textAlign:"center",flexShrink:0}}>🚪</span>
-            <span style={{fontSize:13,whiteSpace:"nowrap"}}>Sign out</span>}
+            <span style={{fontSize:13,whiteSpace:"nowrap"}}>Sign out</span>
           </div>
         </div>
       </div>
