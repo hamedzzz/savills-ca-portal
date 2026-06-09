@@ -73,7 +73,12 @@ export default function Portal(){
   const{user,logout,apiFetch,isAdmin,isEditor,settings,updateSettings}=useAuth();
   const QB = makeQB(settings);
 
-  const[tab,setTab]=useState("properties");
+  const[tab,setTab]=useState("collection");
+  const[sidebarOpen,setSidebarOpen]=useState(false);
+  const[navHover,setNavHover]=useState("");
+  const[homeExpanded,setHomeExpanded]=useState(true);
+  const[adminExpanded,setAdminExpanded]=useState(false);
+  const[selectedNavProp,setSelectedNavProp]=useState("");
   const[properties,setProperties]=useState([]);
   const[archivedProps,setArchivedProps]=useState([]);
   const[showArchived,setShowArchived]=useState(false);
@@ -575,9 +580,11 @@ export default function Portal(){
   };
 
   // ── Styles ──────────────────────────────────────────────────────────────────
+  const SIDEBAR_W=220;const SIDEBAR_C=60;
   const s={
-    topbar:{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 24px",background:QB.bgCard,borderBottom:`1px solid ${QB.borderCard}`,boxShadow:"0 1px 3px rgba(0,0,0,0.06)",position:"sticky",top:0,zIndex:50},
-    wrap:{maxWidth:1160,margin:"0 auto",padding:"0 24px 40px",fontFamily:QB.fontFamily},
+    sidebar:{position:"fixed",top:0,left:0,height:"100vh",width:SIDEBAR_C,background:"#1A2332",display:"flex",flexDirection:"column",zIndex:100,transition:"width 0.2s ease",overflow:"hidden",boxShadow:"2px 0 8px rgba(0,0,0,0.15)"},
+    topbar:{position:"fixed",top:0,left:SIDEBAR_C,right:0,height:56,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 24px",background:QB.bgCard,borderBottom:`1px solid ${QB.borderCard}`,boxShadow:"0 1px 3px rgba(0,0,0,0.06)",zIndex:50,transition:"left 0.2s ease"},
+    wrap:{marginLeft:SIDEBAR_C,marginTop:56,padding:"24px 28px 40px",fontFamily:QB.fontFamily,minHeight:"calc(100vh - 56px)",transition:"margin-left 0.2s ease"},
     tabBar:{display:"flex",gap:0,borderBottom:`2px solid ${QB.borderLight}`,marginBottom:24,marginTop:24},
     tab:(a)=>({padding:"10px 18px",fontSize:13,fontWeight:a?600:400,border:"none",borderBottom:a?`2px solid ${QB.blue}`:"2px solid transparent",marginBottom:-2,background:"transparent",color:a?QB.blue:QB.textSecondary,cursor:"pointer",fontFamily:QB.fontFamily}),
     card:{background:QB.bgCard,border:`1px solid ${QB.borderCard}`,borderRadius:QB.radiusLG,padding:"20px 24px",marginBottom:16,boxShadow:QB.shadowCard},
@@ -696,51 +703,173 @@ export default function Portal(){
     <div style={{minHeight:"100vh",background:QB.bgPage,fontFamily:QB.fontFamily}}>
       <Flash/>
 
-      {/* TOP NAV */}
-      <div style={s.topbar}>
-        <SavillsLogo/>
-        <div style={{display:"flex",gap:10,alignItems:"center"}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginRight:4}}>
-            <Avatar name={user?.full_name||"U"} size={28}/>
-            <div>
-              <div style={{fontSize:13,fontWeight:600,color:QB.textPrimary}}>{user?.full_name}</div>
-              <div style={{fontSize:11,color:QB.textMuted}}>{user?.title||user?.role}</div>
+      {/* SIDEBAR */}
+      <div style={{...s.sidebar,width:sidebarOpen?220:60}}
+        onMouseEnter={()=>setSidebarOpen(true)}
+        onMouseLeave={()=>{setSidebarOpen(false);setNavHover("");}}>
+
+        {/* Logo */}
+        <div style={{padding:"14px 0",display:"flex",alignItems:"center",justifyContent:"center",borderBottom:"1px solid rgba(255,255,255,0.1)",minHeight:56}}>
+          <SavillsLogo size={sidebarOpen?32:24}/>
+        </div>
+
+        {/* Nav */}
+        <div style={{flex:1,overflowY:"auto",overflowX:"hidden",paddingTop:4}}>
+
+          {/* Home */}
+          {[{section:"home",icon:"🏠",label:"Home",items:[
+              {t:"collection",icon:"💰",label:"Collection"},
+              {t:"rent-roll",icon:"📋",label:"Rent Roll"},
+              {t:"reports",icon:"📊",label:"Reports"},
+            ]},
+          ].map(({section,icon,label,items})=>{
+            const active=["collection","rent-roll","reports"].includes(tab);
+            const hov=navHover===section;
+            return(
+              <div key={section}>
+                <div style={{display:"flex",alignItems:"center",gap:14,padding:"11px 18px",cursor:"pointer",
+                  color:active?"#fff":hov?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.55)",
+                  background:active&&!sidebarOpen?"rgba(0,119,197,0.2)":hov?"rgba(255,255,255,0.06)":"transparent",
+                  borderLeft:active?`3px solid ${QB.blue}`:"3px solid transparent",transition:"all 0.15s",minHeight:44}}
+                  onMouseEnter={()=>setNavHover(section)}
+                  onMouseLeave={()=>setNavHover("")}
+                  onClick={()=>{setHomeExpanded(v=>!v);if(!active)setTab("collection");}}>
+                  <span style={{fontSize:18,width:24,textAlign:"center",flexShrink:0}}>{icon}</span>
+                  {sidebarOpen&&<><span style={{fontSize:13,fontWeight:active?600:400,whiteSpace:"nowrap",flex:1}}>{label}</span>
+                  <span style={{fontSize:10,opacity:0.5}}>{homeExpanded?"▲":"▼"}</span></>}
+                </div>
+                {sidebarOpen&&homeExpanded&&items.map(({t,icon:ic,label:lb})=>(
+                  <div key={t} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 18px 8px 54px",cursor:"pointer",
+                    color:tab===t?"#fff":"rgba(255,255,255,0.5)",
+                    background:tab===t?`rgba(0,119,197,0.25)`:"transparent",
+                    borderLeft:tab===t?`3px solid ${QB.yellow}`:"3px solid transparent",
+                    fontSize:12,fontWeight:tab===t?600:400,whiteSpace:"nowrap",transition:"all 0.12s"}}
+                    onClick={()=>{setTab(t);setSelectedProp(null);setSelectedReport(null);}}
+                    onMouseEnter={e=>{if(tab!==t)e.currentTarget.style.background="rgba(255,255,255,0.06)";}}
+                    onMouseLeave={e=>{if(tab!==t)e.currentTarget.style.background="transparent";}}>
+                    <span style={{fontSize:13}}>{ic}</span><span>{lb}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+
+          {/* KPIs */}
+          {[{t:"kpis",icon:"📈",label:"KPIs"}].map(({t,icon,label})=>(
+            <div key={t} style={{display:"flex",alignItems:"center",gap:14,padding:"11px 18px",cursor:"pointer",
+              color:tab===t?"#fff":navHover===t?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.55)",
+              background:tab===t?"rgba(0,119,197,0.2)":navHover===t?"rgba(255,255,255,0.06)":"transparent",
+              borderLeft:tab===t?`3px solid ${QB.blue}`:"3px solid transparent",transition:"all 0.15s",minHeight:44}}
+              onMouseEnter={()=>setNavHover(t)}
+              onMouseLeave={()=>setNavHover("")}
+              onClick={()=>setTab(t)}>
+              <span style={{fontSize:18,width:24,textAlign:"center",flexShrink:0}}>{icon}</span>
+              {sidebarOpen&&<span style={{fontSize:13,fontWeight:tab===t?600:400,whiteSpace:"nowrap"}}>{label}</span>}
             </div>
+          ))}
+
+          {/* Admin */}
+          {isAdmin&&(()=>{
+            const adminTabs=["email","manage-reports","users","customers","requests","activity","settings"];
+            const adminActive=adminTabs.includes(tab);
+            return(
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:14,padding:"11px 18px",cursor:"pointer",
+                  color:adminActive?"#fff":navHover==="admin"?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.55)",
+                  background:adminActive&&!sidebarOpen?"rgba(0,119,197,0.2)":navHover==="admin"?"rgba(255,255,255,0.06)":"transparent",
+                  borderLeft:adminActive?`3px solid ${QB.blue}`:"3px solid transparent",transition:"all 0.15s",minHeight:44}}
+                  onMouseEnter={()=>setNavHover("admin")}
+                  onMouseLeave={()=>setNavHover("")}
+                  onClick={()=>{setAdminExpanded(v=>!v);if(!adminActive)setTab("users");}}>
+                  <span style={{fontSize:18,width:24,textAlign:"center",flexShrink:0}}>⚙️</span>
+                  {sidebarOpen&&<><span style={{fontSize:13,fontWeight:adminActive?600:400,whiteSpace:"nowrap",flex:1}}>Admin</span>
+                  <span style={{fontSize:10,opacity:0.5}}>{adminExpanded?"▲":"▼"}</span></>}
+                </div>
+                {sidebarOpen&&adminExpanded&&[
+                  {t:"users",icon:"👥",label:"Users"},
+                  {t:"customers",icon:"🗃️",label:"Customers DB"},
+                  {t:"manage-reports",icon:"📑",label:"Reports"},
+                  {t:"email",icon:"✉️",label:"Email"},
+                  {t:"requests",icon:"🔔",label:"Requests",badge:pendingCount},
+                  {t:"activity",icon:"📝",label:"Activity"},
+                  {t:"settings",icon:"🛠️",label:"Settings"},
+                ].map(({t,icon,label,badge})=>(
+                  <div key={t} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 18px 8px 54px",cursor:"pointer",
+                    color:tab===t?"#fff":"rgba(255,255,255,0.5)",
+                    background:tab===t?"rgba(0,119,197,0.25)":"transparent",
+                    borderLeft:tab===t?`3px solid ${QB.yellow}`:"3px solid transparent",
+                    fontSize:12,fontWeight:tab===t?600:400,whiteSpace:"nowrap",transition:"all 0.12s"}}
+                    onClick={()=>{setTab(t);setSelectedProp(null);}}
+                    onMouseEnter={e=>{if(tab!==t)e.currentTarget.style.background="rgba(255,255,255,0.06)";}}
+                    onMouseLeave={e=>{if(tab!==t)e.currentTarget.style.background="transparent";}}>
+                    <span style={{fontSize:13}}>{icon}</span>
+                    <span style={{flex:1}}>{label}</span>
+                    {badge>0&&<span style={{background:QB.red,color:"#fff",borderRadius:10,fontSize:9,fontWeight:700,padding:"1px 5px"}}>{badge}</span>}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* You / Sign out */}
+        <div style={{borderTop:"1px solid rgba(255,255,255,0.1)",paddingTop:4}}>
+          <div style={{display:"flex",alignItems:"center",gap:14,padding:"11px 18px",cursor:"pointer",
+            color:navHover==="you"?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.55)",
+            background:navHover==="you"?"rgba(255,255,255,0.06)":"transparent",
+            transition:"all 0.15s",minHeight:44}}
+            onMouseEnter={()=>setNavHover("you")}
+            onMouseLeave={()=>setNavHover("")}
+            onClick={()=>setShowProfile(true)}>
+            <Avatar name={user?.full_name||"U"} size={22}/>
+            {sidebarOpen&&<span style={{fontSize:13,whiteSpace:"nowrap",color:"rgba(255,255,255,0.7)"}}>{user?.full_name?.split(" ")[0]||"You"}</span>}
           </div>
-          <button onClick={()=>setShowProfile(true)} style={{...s.btnS,padding:"6px 16px",fontSize:12}}>Profile</button>
-          <button onClick={logout} style={{...s.btnS,padding:"6px 14px",fontSize:12,color:QB.red,borderColor:QB.redBorder}}>Sign out</button>
+          <div style={{display:"flex",alignItems:"center",gap:14,padding:"11px 18px",cursor:"pointer",
+            color:navHover==="out"?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.4)",
+            background:navHover==="out"?"rgba(255,255,255,0.06)":"transparent",
+            transition:"all 0.15s",minHeight:44}}
+            onMouseEnter={()=>setNavHover("out")}
+            onMouseLeave={()=>setNavHover("")}
+            onClick={logout}>
+            <span style={{fontSize:18,width:24,textAlign:"center",flexShrink:0}}>🚪</span>
+            {sidebarOpen&&<span style={{fontSize:13,whiteSpace:"nowrap"}}>Sign out</span>}
+          </div>
         </div>
       </div>
 
-      <div style={s.wrap}>
-        {/* TAB BAR */}
-        <div style={{...s.tabBar,position:"relative"}}>
-          {tabs.map(t=>(
-            <button key={t} style={s.tab(tab===t)} onClick={()=>{setTab(t);setSelectedProp(null);setSelectedReport(null);setAdminMenuOpen(false);}}>
-              {tabLabels[t]}
-            </button>
-          ))}
-          {isAdmin&&(
-            <div style={{position:"relative",marginLeft:"auto"}}>
-              <button onClick={e=>{e.stopPropagation();setAdminMenuOpen(v=>!v);}}
-                style={{...s.tab(adminDropdownTabs.includes(tab)),display:"flex",alignItems:"center",gap:5}}>
-                {adminDropdownTabs.includes(tab)?tabLabels[tab]:"Admin"}
-                {pendingCount>0&&!adminDropdownTabs.includes(tab)&&<span style={{background:QB.red,color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px"}}>{pendingCount}</span>}
-                <span style={{fontSize:10,opacity:0.6}}>{adminMenuOpen?"▲":"▼"}</span>
-              </button>
-              {adminMenuOpen&&<div style={{position:"absolute",top:"100%",right:0,background:QB.bgCard,border:`1px solid ${QB.borderCard}`,borderRadius:QB.radiusLG,boxShadow:QB.shadowModal,zIndex:200,minWidth:180,overflow:"hidden"}}>
-                {adminDropdownTabs.map(t=>(
-                  <button key={t} onClick={()=>{setTab(t);setSelectedProp(null);setSelectedReport(null);setAdminMenuOpen(false);}}
-                    style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"10px 16px",fontSize:13,border:"none",background:tab===t?QB.blueLight:"transparent",color:tab===t?QB.blue:QB.textPrimary,cursor:"pointer",fontFamily:QB.fontFamily,fontWeight:tab===t?600:400,textAlign:"left",gap:8}}>
-                    {tabLabels[t]}
-                    {t==="requests"&&pendingCount>0&&<span style={{background:QB.red,color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px"}}>{pendingCount}</span>}
-                    {t==="settings"&&<span style={{opacity:0.5}}>⚙</span>}
-                  </button>
-                ))}
-              </div>}
-            </div>
-          )}
+      {/* TOP BAR */}
+      <div style={{...s.topbar,left:sidebarOpen?220:60}}>
+        <div style={{fontSize:14,fontWeight:600,color:QB.textPrimary}}>
+          {tab==="collection"&&"Collection"}
+          {tab==="rent-roll"&&"Rent Roll"}
+          {tab==="reports"&&"Reports"}
+          {tab==="kpis"&&"KPIs"}
+          {tab==="users"&&"Admin — Users"}
+          {tab==="customers"&&"Admin — Customers"}
+          {tab==="manage-reports"&&"Admin — Reports"}
+          {tab==="email"&&"Admin — Email"}
+          {tab==="requests"&&"Admin — Requests"}
+          {tab==="activity"&&"Admin — Activity"}
+          {tab==="settings"&&"Admin — Settings"}
         </div>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}>
+          <select style={{...s.input,width:160,fontSize:12,padding:"6px 10px"}} value={selectedNavProp} onChange={e=>{
+            const v=e.target.value; setSelectedNavProp(v);
+            if(v){
+              const pid=parseInt(v);
+              if(tab==="collection"){setCollFilterProp(pid);}
+              if(tab==="rent-roll"){setRrTabProp(String(pid));loadRentRollTab(pid);}
+            }
+          }}>
+            <option value="">All properties</option>
+            {properties.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          {isAdmin&&<button style={{...s.btnP,padding:"6px 14px",fontSize:12}} onClick={()=>setTab("properties")}>+ Property</button>}
+        </div>
+      </div>
+
+      {/* MAIN CONTENT */}
+      <div style={{...s.wrap,marginLeft:sidebarOpen?220:60}}>
 
         {/* ══════════════════════════════════════════════════════════════════
             PROPERTIES TAB
