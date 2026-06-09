@@ -79,6 +79,7 @@ export default function Portal(){
   const[homeExpanded,setHomeExpanded]=useState(true);
   const[adminExpanded,setAdminExpanded]=useState(false);
   const[selectedNavProp,setSelectedNavProp]=useState("");
+  const[showAddPropForm,setShowAddPropForm]=useState(false);
   const[properties,setProperties]=useState([]);
   const[archivedProps,setArchivedProps]=useState([]);
   const[showArchived,setShowArchived]=useState(false);
@@ -709,8 +710,8 @@ export default function Portal(){
         {/* Logo */}
         <div style={{padding:"14px 16px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid rgba(255,255,255,0.1)",minHeight:64}}>
           <SavillsLogo size={28}/>
-          <div>
-            <div style={{fontSize:13,fontWeight:700,color:"#FEDE07",whiteSpace:"nowrap"}}>Savills Egypt CA</div>
+          <div style={{overflow:"hidden"}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#FEDE07",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Savills Egypt CA</div>
             <div style={{fontSize:10,color:"rgba(255,255,255,0.45)",whiteSpace:"nowrap"}}>Client Accounting</div>
           </div>
         </div>
@@ -866,79 +867,86 @@ export default function Portal(){
             <option value="">All properties</option>
             {properties.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-          {isAdmin&&<button style={{...s.btnP,padding:"6px 14px",fontSize:12}} onClick={()=>{setTab("properties");setSelectedProp(null);}}>+ Property</button>}
+          {isAdmin&&<button style={{...s.btnP,padding:"6px 14px",fontSize:12}} onClick={()=>{setShowAddPropForm(true);}}>+ Property</button>}
         </div>
       </div>
 
       {/* MAIN CONTENT */}
       <div style={{...s.wrap,marginLeft:220}}>
 
-        {/* KPIs TAB */}
-        {tab==="kpis"&&<div>
-          <div style={{marginBottom:20}}>
-            <div style={{fontSize:15,fontWeight:600,color:QB.textPrimary,marginBottom:4}}>KPI Dashboard</div>
-            <div style={{fontSize:13,color:QB.textMuted}}>Overview of collection performance and rent roll across all properties</div>
-          </div>
-          {(()=>{
-            const filtProps=selectedNavProp?properties.filter(p=>String(p.id)===String(selectedNavProp)):properties;
-            return(
-              <div style={{display:"grid",gridTemplateColumns:filtProps.length===1?"1fr":"repeat(auto-fill,minmax(460px,1fr))",gap:20}}>
-                {filtProps.map(prop=>{
-                  const summary=propertySummaries[prop.id]||[];
-                  const rrs=rentRolls[prop.id]||[];
-                  return(
-                    <div key={prop.id} style={{...s.card,marginBottom:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,paddingBottom:12,borderBottom:`1px solid ${QB.borderLight}`}}>
-                        {prop.logo_url&&<img src={prop.logo_url} style={{width:36,height:36,objectFit:"contain",borderRadius:4}}/>}
+        {/* KPIs TAB — reuses property card structure */}
+        {tab==="kpis"&&(()=>{
+          const filtProps=selectedNavProp?properties.filter(p=>String(p.id)===String(selectedNavProp)):properties;
+          return(
+            <div>
+              <div style={{display:"grid",gridTemplateColumns:filtProps.length===1?"1fr":"repeat(auto-fill,minmax(340px,1fr))",gap:16}}>
+                {filtProps.map(p=>(
+                  <div key={p.id} style={{...s.card,marginBottom:0}}>
+                    {/* Header */}
+                    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:8}}>
+                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                        <PropLogo url={p.logo_url} name={p.name} size={36}/>
                         <div>
-                          <div style={{fontSize:15,fontWeight:700,color:QB.textPrimary}}>{prop.name}</div>
-                          <div style={{fontSize:11,color:QB.textMuted}}>{prop.location} · {prop.system}</div>
+                          <div style={{fontSize:15,fontWeight:700,color:QB.textPrimary}}>{p.name}</div>
+                          <div style={{fontSize:12,color:QB.textMuted}}>{p.location}</div>
+                          {p.landlord_name&&<div style={{fontSize:11,color:QB.textMuted,marginTop:1}}>👤 {p.landlord_name}</div>}
                         </div>
                       </div>
-                      {summary.length>0&&<div style={{marginBottom:14}}>
-                        <div style={{fontSize:10,fontWeight:600,color:QB.textSecondary,textTransform:"uppercase",letterSpacing:".07em",marginBottom:8}}>📊 Collection</div>
-                        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
-                          {summary.slice(0,3).map((sm,i)=>{
-                            const rate=sm.total_invoices>0?Math.round(sm.total_collection/sm.total_invoices*100):0;
-                            const color=rate>=90?QB.green:rate>=70?"#B45309":"#C80C0F";
-                            return(
-                              <div key={i} style={{padding:"10px 12px",background:QB.bgSidebar,borderRadius:QB.radiusMD,border:`1px solid ${QB.borderLight}`}}>
-                                <div style={{fontSize:10,color:QB.textMuted,marginBottom:4}}>{sm.month}</div>
-                                <div style={{fontSize:16,fontWeight:700,color}}>{rate}%</div>
-                                <div style={{fontSize:10,color:QB.textMuted,marginTop:2}}>EGP {fmtShort(sm.total_collection)}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>}
-                      {rrs.length>0&&<div>
-                        <div style={{fontSize:10,fontWeight:600,color:QB.textSecondary,textTransform:"uppercase",letterSpacing:".07em",marginBottom:8}}>📋 Rent Roll</div>
-                        <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}>
-                          {rrs.map((rr,i)=>{
-                            const now=new Date();
-                            const exp1=rr.expiry_0_1yr;
-                            return(
-                              <div key={i} style={{padding:"10px 12px",background:QB.bgSidebar,borderRadius:QB.radiusMD,border:`1px solid ${QB.borderLight}`}}>
-                                <div style={{fontSize:10,color:QB.textMuted,marginBottom:6,fontWeight:500}}>{rr.sub_location||prop.name}</div>
-                                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                                  <div><div style={{fontSize:9,color:QB.textMuted}}>Leases</div><div style={{fontSize:13,fontWeight:600}}>{rr.active_leases}</div></div>
-                                  <div><div style={{fontSize:9,color:QB.textMuted}}>GLA</div><div style={{fontSize:13,fontWeight:600}}>{fmtShort(rr.total_gla)} m²</div></div>
-                                  <div><div style={{fontSize:9,color:QB.textMuted}}>Ann. Rent</div><div style={{fontSize:13,fontWeight:600,color:QB.green}}>EGP {fmtShort(rr.annualized_rent)}</div></div>
-                                  <div><div style={{fontSize:9,color:"#C80C0F"}}>Exp &lt;1yr</div><div style={{fontSize:13,fontWeight:700,color:"#C80C0F"}}>{exp1}</div></div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>}
-                      {summary.length===0&&rrs.length===0&&<div style={{textAlign:"center",padding:"16px",color:QB.textMuted,fontSize:13}}>No data yet</div>}
+                      <Badge label={p.system||"—"} color={p.system==="Oracle"?"purple":"green"}/>
                     </div>
-                  );
-                })}
+                    {/* Reports badges */}
+                    <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
+                      {reports.filter(r=>r.property_id===p.id).map(r=><Badge key={r.id} label={r.report_name} color="gray"/>)}
+                      {reports.filter(r=>r.property_id===p.id).length===0&&<span style={{fontSize:11,color:QB.textMuted}}>No reports yet</span>}
+                    </div>
+                    {/* Collection Summary */}
+                    <PropertySummary propId={p.id}/>
+                    {/* Rent Roll */}
+                    {rentRolls[p.id]&&rentRolls[p.id].length>0&&(
+                      <div style={{marginBottom:8}}>
+                        <div style={{fontSize:11,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em",marginBottom:6}}>📋 Rent Roll</div>
+                        {rentRolls[p.id].map((rr,ri)=>{
+                          const now=new Date();
+                          const cached=rentRollLeases[p.id];
+                          const subL=cached?(rr.sub_location?cached.filter(l=>(l.sub_location||"")===(rr.sub_location||"")):cached):null;
+                          const calcExp=(mn,mx)=>subL?subL.filter(l=>{if(!l.lease_end)return false;const d=(new Date(l.lease_end)-now)/(1000*60*60*24*365.25);return d>mn&&d<=mx;}).length:null;
+                          const exp1=calcExp(0,1)??rr.expiry_0_1yr;
+                          const exp2=calcExp(1,2)??rr.expiry_1_2yr;
+                          const exp3=calcExp(2,3)??rr.expiry_2_3yr;
+                          return(
+                            <div key={ri} style={{background:QB.bgSidebar,border:`1px solid ${QB.borderLight}`,borderRadius:QB.radiusMD,padding:"10px 12px",marginBottom:6}}>
+                              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                                <span style={{fontSize:12,fontWeight:600,color:QB.textPrimary}}>{rr.sub_location||p.name}</span>
+                                <span style={{fontSize:10,color:QB.textMuted}}>{rr.report_date}</span>
+                              </div>
+                              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:8}}>
+                                <div><div style={{fontSize:9,color:QB.textMuted}}>Leases</div><div style={{fontSize:13,fontWeight:600,color:QB.textPrimary}}>{rr.active_leases}</div></div>
+                                <div><div style={{fontSize:9,color:QB.textMuted}}>GLA</div><div style={{fontSize:13,fontWeight:600,color:QB.textPrimary}}>{fmtShort(rr.total_gla)} m²</div></div>
+                                <div><div style={{fontSize:9,color:QB.textMuted}}>Ann. Rent</div><div style={{fontSize:13,fontWeight:600,color:QB.green}}>EGP {fmtShort(rr.annualized_rent)}</div></div>
+                                <div><div style={{fontSize:9,color:QB.textMuted}}>Monthly</div><div style={{fontSize:13,fontWeight:600,color:QB.textPrimary}}>EGP {fmtShort(rr.monthly_rent+rr.monthly_sc)}</div></div>
+                              </div>
+                              <div style={{display:"flex",gap:6}}>
+                                {[{v:exp1,l:"<1yr",c:"#C80C0F",bg:"#FEF2F2"},{v:exp2,l:"1-2yr",c:"#B45309",bg:"#FFFBEB"},{v:exp3,l:"2-3yr",c:QB.blue,bg:QB.blueLight}].map(({v,l,c,bg})=>(
+                                  <span key={l} style={{fontSize:10,padding:"2px 7px",borderRadius:10,background:bg,color:c,fontWeight:600}}>{v} {l}</span>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {!rentRolls[p.id]?.length&&!propertySummaries[p.id]?.length&&<div style={{fontSize:12,color:QB.textMuted,textAlign:"center",padding:"8px"}}>No data yet</div>}
+                    {/* Quick actions */}
+                    <div style={{display:"flex",gap:6,marginTop:8,paddingTop:8,borderTop:`1px solid ${QB.borderLight}`}}>
+                      <button style={{...s.btnS,padding:"4px 12px",fontSize:11}} onClick={()=>{setTab("collection");}}>📊 Collection</button>
+                      <button style={{...s.btnS,padding:"4px 12px",fontSize:11}} onClick={()=>{setTab("rent-roll");setRrTabProp(String(p.id));loadRentRollTab(p.id);}}>📋 Rent Roll</button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            );
-          })()}
-        </div>}
+            </div>
+          );
+        })()}
 
         {/* ══════════════════════════════════════════════════════════════════
             PROPERTIES TAB
@@ -3576,6 +3584,39 @@ export default function Portal(){
                 }catch(ex){flash(ex.message,"error");}
               }}>{editCustomer?"Save changes":"Add customer"}</button>
               <button style={s.btnS} onClick={()=>setShowCustomerForm(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>}
+
+        {/* Add Property Modal */}
+        {showAddPropForm&&<div style={s.overlay} onClick={()=>setShowAddPropForm(false)}>
+          <div style={{...s.modal,width:520}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+              <div style={s.modalTitle}>Add Property</div>
+              <button onClick={()=>setShowAddPropForm(false)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:QB.textMuted}}>✕</button>
+            </div>
+            <div style={s.formGrid}>
+              <div><label style={s.label}>Name</label><input style={s.input} value={newProp.name} onChange={e=>setNewProp(p=>({...p,name:e.target.value}))} placeholder="e.g. Arkan"/></div>
+              <div><label style={s.label}>System</label>
+                <select style={s.input} value={newProp.system} onChange={e=>setNewProp(p=>({...p,system:e.target.value}))}>
+                  <option value="">—</option><option>Oracle</option><option>Yardi</option>
+                </select>
+              </div>
+              <div><label style={s.label}>Location</label><input style={s.input} value={newProp.location} onChange={e=>setNewProp(p=>({...p,location:e.target.value}))} placeholder="e.g. Sheikh Zayed"/></div>
+              <div><label style={s.label}>Landlord name (optional)</label><input style={s.input} value={newProp.landlord_name} onChange={e=>setNewProp(p=>({...p,landlord_name:e.target.value}))} placeholder="e.g. Arkan Development"/></div>
+              <div style={{gridColumn:"1/-1"}}><label style={s.label}>Logo URL (optional)</label><input style={s.input} value={newProp.logo_url} onChange={e=>setNewProp(p=>({...p,logo_url:e.target.value}))} placeholder="https://..."/></div>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button style={s.btnP} onClick={async()=>{
+                if(!newProp.name.trim()){flash("Name required","error");return;}
+                try{
+                  await apiFetch("/properties",{method:"POST",body:JSON.stringify(newProp)});
+                  setNewProp({name:"",location:"",system:"",logo_url:"",landlord_name:""});
+                  setShowAddPropForm(false);
+                  load();flash("Property added");
+                }catch(e){flash(e.message,"error");}
+              }}>Add property</button>
+              <button style={s.btnS} onClick={()=>setShowAddPropForm(false)}>Cancel</button>
             </div>
           </div>
         </div>}
