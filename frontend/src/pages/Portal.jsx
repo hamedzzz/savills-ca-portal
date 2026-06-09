@@ -704,13 +704,15 @@ export default function Portal(){
       <Flash/>
 
       {/* SIDEBAR */}
-      <div style={{...s.sidebar,width:sidebarOpen?220:60}}
-        onMouseEnter={()=>setSidebarOpen(true)}
-        onMouseLeave={()=>{setSidebarOpen(false);setNavHover("");}}>
+      <div style={{...s.sidebar,width:220}}>
 
         {/* Logo */}
-        <div style={{padding:"14px 0",display:"flex",alignItems:"center",justifyContent:"center",borderBottom:"1px solid rgba(255,255,255,0.1)",minHeight:56}}>
-          <SavillsLogo size={sidebarOpen?32:24}/>
+        <div style={{padding:"14px 16px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid rgba(255,255,255,0.1)",minHeight:64}}>
+          <SavillsLogo size={28}/>
+          <div>
+            <div style={{fontSize:13,fontWeight:700,color:"#FEDE07",whiteSpace:"nowrap"}}>Savills Egypt CA</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.45)",whiteSpace:"nowrap"}}>Client Accounting</div>
+          </div>
         </div>
 
         {/* Nav */}
@@ -735,10 +737,10 @@ export default function Portal(){
                   onMouseLeave={()=>setNavHover("")}
                   onClick={()=>{setHomeExpanded(v=>!v);if(!active)setTab("collection");}}>
                   <span style={{fontSize:18,width:24,textAlign:"center",flexShrink:0}}>{icon}</span>
-                  {sidebarOpen&&<><span style={{fontSize:13,fontWeight:active?600:400,whiteSpace:"nowrap",flex:1}}>{label}</span>
+                  <><span style={{fontSize:13,fontWeight:active?600:400,whiteSpace:"nowrap",flex:1}}>{label}</span>
                   <span style={{fontSize:10,opacity:0.5}}>{homeExpanded?"▲":"▼"}</span></>}
                 </div>
-                {sidebarOpen&&homeExpanded&&items.map(({t,icon:ic,label:lb})=>(
+                {homeExpanded&&items.map(({t,icon:ic,label:lb})=>(
                   <div key={t} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 18px 8px 54px",cursor:"pointer",
                     color:tab===t?"#fff":"rgba(255,255,255,0.5)",
                     background:tab===t?`rgba(0,119,197,0.25)`:"transparent",
@@ -782,10 +784,10 @@ export default function Portal(){
                   onMouseLeave={()=>setNavHover("")}
                   onClick={()=>{setAdminExpanded(v=>!v);if(!adminActive)setTab("users");}}>
                   <span style={{fontSize:18,width:24,textAlign:"center",flexShrink:0}}>⚙️</span>
-                  {sidebarOpen&&<><span style={{fontSize:13,fontWeight:adminActive?600:400,whiteSpace:"nowrap",flex:1}}>Admin</span>
+                  <><span style={{fontSize:13,fontWeight:adminActive?600:400,whiteSpace:"nowrap",flex:1}}>Admin</span>
                   <span style={{fontSize:10,opacity:0.5}}>{adminExpanded?"▲":"▼"}</span></>}
                 </div>
-                {sidebarOpen&&adminExpanded&&[
+                {adminExpanded&&[
                   {t:"users",icon:"👥",label:"Users"},
                   {t:"customers",icon:"🗃️",label:"Customers DB"},
                   {t:"manage-reports",icon:"📑",label:"Reports"},
@@ -822,7 +824,7 @@ export default function Portal(){
             onMouseLeave={()=>setNavHover("")}
             onClick={()=>setShowProfile(true)}>
             <Avatar name={user?.full_name||"U"} size={22}/>
-            {sidebarOpen&&<span style={{fontSize:13,whiteSpace:"nowrap",color:"rgba(255,255,255,0.7)"}}>{user?.full_name?.split(" ")[0]||"You"}</span>}
+            <span style={{fontSize:13,whiteSpace:"nowrap",color:"rgba(255,255,255,0.7)"}}>{user?.full_name?.split(" ")[0]||"You"}</span>}
           </div>
           <div style={{display:"flex",alignItems:"center",gap:14,padding:"11px 18px",cursor:"pointer",
             color:navHover==="out"?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.4)",
@@ -832,13 +834,13 @@ export default function Portal(){
             onMouseLeave={()=>setNavHover("")}
             onClick={logout}>
             <span style={{fontSize:18,width:24,textAlign:"center",flexShrink:0}}>🚪</span>
-            {sidebarOpen&&<span style={{fontSize:13,whiteSpace:"nowrap"}}>Sign out</span>}
+            <span style={{fontSize:13,whiteSpace:"nowrap"}}>Sign out</span>}
           </div>
         </div>
       </div>
 
       {/* TOP BAR */}
-      <div style={{...s.topbar,left:sidebarOpen?220:60}}>
+      <div style={{...s.topbar,left:220}}>
         <div style={{fontSize:14,fontWeight:600,color:QB.textPrimary}}>
           {tab==="collection"&&"Collection"}
           {tab==="rent-roll"&&"Rent Roll"}
@@ -864,12 +866,79 @@ export default function Portal(){
             <option value="">All properties</option>
             {properties.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-          {isAdmin&&<button style={{...s.btnP,padding:"6px 14px",fontSize:12}} onClick={()=>setTab("properties")}>+ Property</button>}
+          {isAdmin&&<button style={{...s.btnP,padding:"6px 14px",fontSize:12}} onClick={()=>{setTab("properties");setSelectedProp(null);}}>+ Property</button>}
         </div>
       </div>
 
       {/* MAIN CONTENT */}
-      <div style={{...s.wrap,marginLeft:sidebarOpen?220:60}}>
+      <div style={{...s.wrap,marginLeft:220}}>
+
+        {/* KPIs TAB */}
+        {tab==="kpis"&&<div>
+          <div style={{marginBottom:20}}>
+            <div style={{fontSize:15,fontWeight:600,color:QB.textPrimary,marginBottom:4}}>KPI Dashboard</div>
+            <div style={{fontSize:13,color:QB.textMuted}}>Overview of collection performance and rent roll across all properties</div>
+          </div>
+          {(()=>{
+            const filtProps=selectedNavProp?properties.filter(p=>String(p.id)===String(selectedNavProp)):properties;
+            return(
+              <div style={{display:"grid",gridTemplateColumns:filtProps.length===1?"1fr":"repeat(auto-fill,minmax(460px,1fr))",gap:20}}>
+                {filtProps.map(prop=>{
+                  const summary=propertySummaries[prop.id]||[];
+                  const rrs=rentRolls[prop.id]||[];
+                  return(
+                    <div key={prop.id} style={{...s.card,marginBottom:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,paddingBottom:12,borderBottom:`1px solid ${QB.borderLight}`}}>
+                        {prop.logo_url&&<img src={prop.logo_url} style={{width:36,height:36,objectFit:"contain",borderRadius:4}}/>}
+                        <div>
+                          <div style={{fontSize:15,fontWeight:700,color:QB.textPrimary}}>{prop.name}</div>
+                          <div style={{fontSize:11,color:QB.textMuted}}>{prop.location} · {prop.system}</div>
+                        </div>
+                      </div>
+                      {summary.length>0&&<div style={{marginBottom:14}}>
+                        <div style={{fontSize:10,fontWeight:600,color:QB.textSecondary,textTransform:"uppercase",letterSpacing:".07em",marginBottom:8}}>📊 Collection</div>
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+                          {summary.slice(0,3).map((sm,i)=>{
+                            const rate=sm.total_invoices>0?Math.round(sm.total_collection/sm.total_invoices*100):0;
+                            const color=rate>=90?QB.green:rate>=70?"#B45309":"#C80C0F";
+                            return(
+                              <div key={i} style={{padding:"10px 12px",background:QB.bgSidebar,borderRadius:QB.radiusMD,border:`1px solid ${QB.borderLight}`}}>
+                                <div style={{fontSize:10,color:QB.textMuted,marginBottom:4}}>{sm.month}</div>
+                                <div style={{fontSize:16,fontWeight:700,color}}>{rate}%</div>
+                                <div style={{fontSize:10,color:QB.textMuted,marginTop:2}}>EGP {fmtShort(sm.total_collection)}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>}
+                      {rrs.length>0&&<div>
+                        <div style={{fontSize:10,fontWeight:600,color:QB.textSecondary,textTransform:"uppercase",letterSpacing:".07em",marginBottom:8}}>📋 Rent Roll</div>
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}>
+                          {rrs.map((rr,i)=>{
+                            const now=new Date();
+                            const exp1=rr.expiry_0_1yr;
+                            return(
+                              <div key={i} style={{padding:"10px 12px",background:QB.bgSidebar,borderRadius:QB.radiusMD,border:`1px solid ${QB.borderLight}`}}>
+                                <div style={{fontSize:10,color:QB.textMuted,marginBottom:6,fontWeight:500}}>{rr.sub_location||prop.name}</div>
+                                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                                  <div><div style={{fontSize:9,color:QB.textMuted}}>Leases</div><div style={{fontSize:13,fontWeight:600}}>{rr.active_leases}</div></div>
+                                  <div><div style={{fontSize:9,color:QB.textMuted}}>GLA</div><div style={{fontSize:13,fontWeight:600}}>{fmtShort(rr.total_gla)} m²</div></div>
+                                  <div><div style={{fontSize:9,color:QB.textMuted}}>Ann. Rent</div><div style={{fontSize:13,fontWeight:600,color:QB.green}}>EGP {fmtShort(rr.annualized_rent)}</div></div>
+                                  <div><div style={{fontSize:9,color:"#C80C0F"}}>Exp &lt;1yr</div><div style={{fontSize:13,fontWeight:700,color:"#C80C0F"}}>{exp1}</div></div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>}
+                      {summary.length===0&&rrs.length===0&&<div style={{textAlign:"center",padding:"16px",color:QB.textMuted,fontSize:13}}>No data yet</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>}
 
         {/* ══════════════════════════════════════════════════════════════════
             PROPERTIES TAB
