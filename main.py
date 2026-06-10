@@ -7,7 +7,16 @@ import os, json, io, httpx, jwt, bcrypt, psycopg2, psycopg2.extras
 from datetime import datetime, timedelta
 
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+ALLOWED_ORIGINS = [
+    "https://savills-ca-portal.vercel.app",
+    "https://savills-ca-portal-git-main-ahmed-hamed-s-projects.vercel.app",
+    "http://localhost:5173",  # local dev
+]
+app.add_middleware(CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"])
 
 SECRET_KEY = os.getenv("SECRET_KEY", "savills-ca-portal-2026")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
