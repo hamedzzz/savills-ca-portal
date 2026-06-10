@@ -421,10 +421,15 @@ def login(data: LoginData):
                   (user["id"], otp, expires))
         conn.commit()
         # Send OTP email
-        send_otp_email(user["email"], user["full_name"], otp)
+        sent = send_otp_email(user["email"], user["full_name"], otp)
         conn.close()
-        return {"otp_required": True, "user_id": user["id"],
+        resp = {"otp_required": True, "user_id": user["id"],
                 "message": f"OTP sent to {user['email'][:3]}***@{user['email'].split('@')[1]}"}
+        # If SendGrid not configured, return OTP directly for testing
+        if not sent:
+            resp["dev_otp"] = otp
+            resp["message"] = "Email not configured — use dev_otp field"
+        return resp
 
     # No email — direct login (fallback)
     log_activity(conn, user["id"], "login", "auth", user["username"])
