@@ -3,7 +3,7 @@ from fastapi import FastAPI, HTTPException, Depends, Header, UploadFile, File, F
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
-import os, json, io, httpx, jwt, bcrypt, psycopg2, psycopg2.extras, random, string
+import os, json, io, httpx, jwt, bcrypt, psycopg2, psycopg2.extras, random, string, base64
 from datetime import datetime, timedelta
 
 app = FastAPI()
@@ -1632,7 +1632,6 @@ async def upload_sop(
     file: UploadFile = File(...),
     current_user=Depends(require_admin)
 ):
-    import base64
     content = await file.read()
     file_b64 = base64.b64encode(content).decode()
     conn = get_db(); c = conn.cursor()
@@ -1656,7 +1655,6 @@ def list_sop_documents(current_user=Depends(get_current_user)):
 
 @app.get("/sop/download/{doc_id}")
 def download_sop(doc_id: int, current_user=Depends(get_current_user)):
-    import base64
     conn = get_db(); c = conn.cursor()
     c.execute("SELECT filename, file_data FROM sop_documents WHERE id=%s AND is_active=TRUE", (doc_id,))
     row = c.fetchone(); conn.close()
