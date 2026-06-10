@@ -479,9 +479,16 @@ export default function Portal(){
     if(reconProp&&reconMonth) loadReconLines(reconProp,reconMonth,reconSub,reconElement,reconStatus);
   },[reconStatus]);
 
+  useEffect(()=>{
+    if(tab==="doc-sop") loadSopDocs();
+    if(tab==="doc-guide") loadGuide();
+  },[tab]);
+
   const loadSopDocs=async()=>{
-    const d=await apiFetch("/sop/documents");
-    if(d) setSopDocs(d);
+    try{
+      const d=await apiFetch("/sop/documents");
+      if(d) setSopDocs(d);
+    }catch(e){console.error("loadSopDocs error:",e);}
   };
 
   const loadGuide=async()=>{
