@@ -335,9 +335,12 @@ def send_otp_email(to_email: str, to_name: str, otp: str) -> bool:
                   "subject": f"Your login code: {{otp}}",
                   "content": [{{"type": "text/html", "value": html}}]}},
             timeout=10)
-        return resp.status_code == 202
+        if resp.status_code == 202:
+            return True
+        print(f"SendGrid error {resp.status_code}: {resp.text}")
+        return False
     except Exception as e:
-        print(f"OTP email error: {{e}}"); return False
+        print(f"OTP email error: {e}"); return False
 def verify_password(p, h): return bcrypt.checkpw(p.encode(), h.encode())
 def create_token(data): return jwt.encode({**data, "exp": datetime.utcnow()+timedelta(days=7)}, SECRET_KEY, algorithm="HS256")
 
