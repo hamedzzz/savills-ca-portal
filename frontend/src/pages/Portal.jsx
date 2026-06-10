@@ -2450,8 +2450,29 @@ export default function Portal(){
 
               {/* Leases sub-tab */}
               {rrSubTab==="leases"&&<div>
-              {/* Filters */}
+              {/* Filters + Upload */}
               <div style={{...s.card,marginBottom:16}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                  <div style={s.cardTitle}>Lease Register</div>
+                  {(isAdmin||isEditor)&&<label style={{...s.btnP,padding:"6px 14px",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+                    📥 Upload Rent Roll
+                    <input type="file" accept=".xlsx" style={{display:"none"}} onChange={async e=>{
+                      const file=e.target.files[0]; if(!file) return;
+                      if(!rrTabProp){flash("Select a property first","error");return;}
+                      setUploadingRR(rrTabProp);
+                      const fd=new FormData(); fd.append("file",file); fd.append("property_id",rrTabProp);
+                      try{
+                        const token=localStorage.getItem("ca_token");
+                        const API=import.meta.env.VITE_API_URL||"http://localhost:8001";
+                        const res=await fetch(`${API}/rent-roll/upload`,{method:"POST",headers:{Authorization:`Bearer ${token}`},body:fd});
+                        const r=await res.json();
+                        if(r.ok){flash(`Uploaded: ${r.active_leases} leases · ${r.sub_location||""}`);loadRentRolls();loadRentRollTab(parseInt(rrTabProp));}
+                        else flash(r.detail||"Upload failed","error");
+                      }catch(ex){flash("Upload failed","error");}
+                      finally{setUploadingRR(null);e.target.value="";}
+                    }}/>
+                  </label>}
+                </div>
                 <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
                   <div>
                     <label style={s.label}>Property</label>
