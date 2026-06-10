@@ -37,6 +37,7 @@ export default function Login() {
       if (d.otp_required) {
         setUserId(d.user_id);
         setOtpHint(d.message || "OTP sent to your email");
+        if (d.dev_otp) setOtpCode(d.dev_otp); // auto-fill in dev mode
         setOtpStep(true);
       } else {
         // Direct login (no email)
