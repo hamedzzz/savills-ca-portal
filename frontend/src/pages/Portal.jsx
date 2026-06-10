@@ -859,18 +859,19 @@ export default function Portal(){
           {tab==="settings"&&"Admin — Settings"}
         </div>
         <div style={{display:"flex",gap:10,alignItems:"center"}}>
-          <select style={{...s.input,width:160,fontSize:12,padding:"6px 10px"}} value={selectedNavProp} onChange={e=>{
-            const v=e.target.value; setSelectedNavProp(v);
-            if(v){
-              const pid=parseInt(v);
-              if(tab==="collection"){setCollFilterProp(pid);}
-              if(tab==="rent-roll"){setRrTabProp(String(pid));loadRentRollTab(pid);}
-            }
-          }}>
-            <option value="">All properties</option>
-            {properties.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-          {isAdmin&&<button style={{...s.btnP,padding:"6px 14px",fontSize:12}} onClick={()=>{setShowAddPropForm(true);}}>+ Property</button>}
+          {(tab==="collection"||tab==="kpis")&&<>
+            <select style={{...s.input,width:160,fontSize:12,padding:"6px 10px"}} value={selectedNavProp} onChange={e=>{
+              const v=e.target.value; setSelectedNavProp(v);
+              if(v){
+                const pid=parseInt(v);
+                if(tab==="collection"){setCollFilterProp(pid);}
+              }
+            }}>
+              <option value="">All properties</option>
+              {properties.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            {isAdmin&&<button style={{...s.btnP,padding:"6px 14px",fontSize:12}} onClick={()=>setShowAddPropForm(true)}>+ Property</button>}
+          </>}
         </div>
       </div>
 
