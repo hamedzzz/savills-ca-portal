@@ -316,25 +316,32 @@ def generate_otp():
 def send_otp_email(to_email: str, to_name: str, otp: str) -> bool:
     if not SENDGRID_API_KEY: return False
     try:
-        html = f"""<!DOCTYPE html><html><body style="font-family:-apple-system,sans-serif;background:#F4F5F7;padding:32px">
-        <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:8px;padding:32px;border:1px solid #E3E8EF">
-          <div style="height:4px;background:#FEDE07;border-radius:2px;margin-bottom:24px"></div>
-          <div style="font-size:18px;font-weight:700;color:#1C1C1C;margin-bottom:8px">Login Verification</div>
-          <div style="font-size:14px;color:#57647A;margin-bottom:24px">Hi {to_name}, use the code below to complete your login to Savills Egypt CA Portal.</div>
-          <div style="text-align:center;padding:20px;background:#F8F9FA;border-radius:8px;border:1px solid #E3E8EF;margin-bottom:20px">
-            <div style="font-size:36px;font-weight:700;letter-spacing:8px;color:#0077C5">{otp}</div>
-            <div style="font-size:12px;color:#8C96A3;margin-top:8px">Valid for 10 minutes</div>
-          </div>
-          <div style="font-size:12px;color:#8C96A3">If you didn't request this, please ignore this email.</div>
-          <div style="margin-top:20px;padding-top:16px;border-top:1px solid #F4F5F7;font-size:11px;color:#C4CBD6">Savills Egypt · Client Accounting · Property Management</div>
-        </div></body></html>"""
-        resp = httpx.post("https://api.sendgrid.com/v3/mail/send",
-            headers={{"Authorization": f"Bearer {{SENDGRID_API_KEY}}", "Content-Type": "application/json"}},
-            json={{"personalizations": [{{"to": [{{"email": to_email, "name": to_name}}]}}],
-                  "from": {{"email": "ahmed.hamed@savills.me", "name": "Savills Egypt — CA Portal"}},
-                  "subject": f"Your login code: {{otp}}",
-                  "content": [{{"type": "text/html", "value": html}}]}},
-            timeout=10)
+        html = (
+            "<!DOCTYPE html><html><body style='font-family:-apple-system,sans-serif;background:#F4F5F7;padding:32px'>"
+            "<div style='max-width:480px;margin:0 auto;background:#fff;border-radius:8px;padding:32px;border:1px solid #E3E8EF'>"
+            "<div style='height:4px;background:#FEDE07;border-radius:2px;margin-bottom:24px'></div>"
+            "<div style='font-size:18px;font-weight:700;color:#1C1C1C;margin-bottom:8px'>Login Verification</div>"
+            f"<div style='font-size:14px;color:#57647A;margin-bottom:24px'>Hi {to_name}, use the code below to sign in to Savills Egypt CA Portal.</div>"
+            "<div style='text-align:center;padding:20px;background:#F8F9FA;border-radius:8px;border:1px solid #E3E8EF;margin-bottom:20px'>"
+            f"<div style='font-size:36px;font-weight:700;letter-spacing:8px;color:#0077C5'>{otp}</div>"
+            "<div style='font-size:12px;color:#8C96A3;margin-top:8px'>Valid for 10 minutes</div>"
+            "</div>"
+            "<div style='font-size:12px;color:#8C96A3'>If you did not request this, please ignore this email.</div>"
+            "<div style='margin-top:20px;padding-top:16px;border-top:1px solid #F4F5F7;font-size:11px;color:#C4CBD6'>Savills Egypt · Client Accounting · Property Management</div>"
+            "</div></body></html>"
+        )
+        payload = {
+            "personalizations": [{"to": [{"email": to_email, "name": to_name}]}],
+            "from": {"email": "ahmed.hamed@savills.me", "name": "Savills Egypt — CA Portal"},
+            "subject": f"Your login code: {otp}",
+            "content": [{"type": "text/html", "value": html}]
+        }
+        resp = httpx.post(
+            "https://api.sendgrid.com/v3/mail/send",
+            headers={"Authorization": f"Bearer {SENDGRID_API_KEY}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=10
+        )
         if resp.status_code == 202:
             return True
         print(f"SendGrid error {resp.status_code}: {resp.text}")
