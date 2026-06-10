@@ -73,8 +73,9 @@ export default function Portal(){
   const{user,logout,apiFetch,isAdmin,isEditor,settings,updateSettings}=useAuth();
   const QB = makeQB(settings);
 
-  const[tab,setTab]=useState("collection");
+  const[tab,setTab]=useState("welcome");
   const[sidebarOpen,setSidebarOpen]=useState(false);
+  const[welcomeGreeting,setWelcomeGreeting]=useState("");
   const[navHover,setNavHover]=useState("");
   const[homeExpanded,setHomeExpanded]=useState(true);
   const[adminExpanded,setAdminExpanded]=useState(false);
@@ -551,7 +552,11 @@ export default function Portal(){
     if(d)setActivities(d);
   };
 
-  useEffect(()=>{load();loadEditRequests();loadRentRolls();loadCustomers();},[]);
+  useEffect(()=>{
+    load();loadEditRequests();loadRentRolls();loadCustomers();loadActivities();
+    const h=new Date().getHours();
+    setWelcomeGreeting(h<12?"Good morning":h<17?"Good afternoon":"Good evening");
+  },[]);
   useEffect(()=>{if(tab==="activity")loadActivities();},[tab,actFilterUser,actFilterDays]);
   useEffect(()=>{if(showProfile)setProfileForm({full_name:user?.full_name||"",email:user?.email||"",title:user?.title||""});},[showProfile]);
 
@@ -724,6 +729,7 @@ export default function Portal(){
 
           {/* Home */}
           {[{section:"home",icon:"🏠",label:"Home",items:[
+              {t:"welcome",icon:"🏠",label:"Welcome"},
               {t:"collection",icon:"💰",label:"Collection"},
               {t:"rent-roll",icon:"📋",label:"Rent Roll"},
               {t:"reports",icon:"📊",label:"Reports"},
@@ -846,6 +852,7 @@ export default function Portal(){
       {/* TOP BAR */}
       <div style={{...s.topbar,left:220}}>
         <div style={{fontSize:14,fontWeight:600,color:QB.textPrimary}}>
+          {tab==="welcome"&&"Home"}
           {tab==="collection"&&"Collection"}
           {tab==="rent-roll"&&"Rent Roll"}
           {tab==="reports"&&"Reports"}
@@ -947,6 +954,108 @@ export default function Portal(){
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ══════════════════════════════════════════════════════════════════
+            WELCOME TAB
+        ══════════════════════════════════════════════════════════════════ */}
+        {tab==="welcome"&&(()=>{
+          // Calculate KPIs based on role
+          const myProps = isAdmin ? properties : properties.filter(p=>
+            myAccess.property_ids?.length===0 || myAccess.property_ids?.includes(p.id)
+          );
+          const totalLeases = myProps.reduce((a,p)=>{
+            const rrs=rentRolls[p.id]||[];
+            return a+rrs.reduce((b,r)=>b+r.active_leases,0);
+          },0);
+          const now=new Date();
+          const exp1yr = myProps.reduce((a,p)=>{
+            const cached=rentRollLeases[p.id];
+            if(!cached) return a+(rentRolls[p.id]||[]).reduce((b,r)=>b+r.expiry_0_1yr,0);
+            return a+cached.filter(l=>{
+              if(!l.lease_end) return false;
+              return (new Date(l.lease_end)-now)/(1000*60*60*24*365.25)<=1;
+            }).length;
+          },0);
+          const pendingReqs = isAdmin?pendingCount:0;
+          const dateStr = now.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+
+          return(
+            <div style={{maxWidth:900}}>
+              {/* Greeting */}
+              <div style={{marginBottom:28}}>
+                <div style={{fontSize:11,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".08em",marginBottom:6}}>{welcomeGreeting}</div>
+                <div style={{fontSize:26,fontWeight:600,color:QB.textPrimary,marginBottom:4}}>{user?.full_name}</div>
+                <div style={{fontSize:13,color:QB.textMuted}}>{user?.title||user?.role} · {dateStr}</div>
+              </div>
+
+              {/* KPI cards */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:24}}>
+                {[
+                  {label:"Properties",value:myProps.length,icon:"🏢",color:QB.textPrimary},
+                  {label:"Active Leases",value:totalLeases||"—",icon:"📋",color:QB.textPrimary},
+                  {label:"Expiring <1yr",value:exp1yr||"—",icon:"⚠️",color:exp1yr>0?"#C80C0F":QB.textPrimary},
+                  ...(isAdmin||isEditor?[{label:"Pending Requests",value:isAdmin?pendingCount:collLogs.filter(l=>l.property_id&&myProps.find(p=>p.id===l.property_id)).length,icon:"🔔",color:pendingCount>0?"#B45309":QB.textPrimary}]:[]),
+                ].map(({label,value,icon,color})=>(
+                  <div key={label} style={{background:QB.bgSidebar,borderRadius:QB.radiusMD,padding:"16px",border:`1px solid ${QB.borderLight}`}}>
+                    <div style={{fontSize:10,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em",marginBottom:8}}>{icon} {label}</div>
+                    <div style={{fontSize:24,fontWeight:600,color}}>{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Quick actions */}
+              <div style={{...s.card,marginBottom:16}}>
+                <div style={{fontSize:11,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em",marginBottom:12}}>Quick actions</div>
+                <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                  {(isAdmin||isEditor)&&[
+                    {icon:"📥",label:"Upload Rent Roll",action:()=>setTab("rent-roll")},
+                    {icon:"📑",label:"Invoice Recon",action:()=>{setTab("rent-roll");setRrSubTab("recon");}},
+                    {icon:"💰",label:"Log Collection",action:()=>setTab("collection")},
+                    {icon:"📊",label:"View Reports",action:()=>setTab("reports")},
+                    {icon:"📈",label:"KPI Dashboard",action:()=>setTab("kpis")},
+                  ].map(({icon,label,action})=>(
+                    <button key={label} style={{...s.btnS,padding:"8px 14px",fontSize:12,display:"flex",alignItems:"center",gap:6}} onClick={action}>
+                      <span>{icon}</span>{label}
+                    </button>
+                  ))}
+                  {!isAdmin&&!isEditor&&[
+                    {icon:"📊",label:"View Reports",action:()=>setTab("reports")},
+                    {icon:"📈",label:"KPI Dashboard",action:()=>setTab("kpis")},
+                  ].map(({icon,label,action})=>(
+                    <button key={label} style={{...s.btnS,padding:"8px 14px",fontSize:12,display:"flex",alignItems:"center",gap:6}} onClick={action}>
+                      <span>{icon}</span>{label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Recent activity */}
+              <div style={s.card}>
+                <div style={{fontSize:11,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".07em",marginBottom:12}}>Recent activity</div>
+                {activities.length===0?<div style={{fontSize:13,color:QB.textMuted,textAlign:"center",padding:"16px"}}>No recent activity</div>:
+                activities.slice(0,6).map((a,i)=>{
+                  const icon=a.action.includes("login")?"🔑":a.action.includes("upload")?"📥":a.action.includes("collection")?"💰":a.action.includes("report")?"📊":a.action.includes("customer")?"👤":a.action.includes("email")?"✉️":"📝";
+                  const timeAgo=()=>{
+                    const diff=(now-new Date(a.created_at))/1000;
+                    if(diff<3600) return `${Math.round(diff/60)}m ago`;
+                    if(diff<86400) return `${Math.round(diff/3600)}h ago`;
+                    return `${Math.round(diff/86400)}d ago`;
+                  };
+                  return(
+                    <div key={a.id||i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:i<Math.min(activities.length,6)-1?`1px solid ${QB.borderLight}`:"none",fontSize:12}}>
+                      <span style={{fontSize:14}}>{icon}</span>
+                      <div style={{flex:1}}>
+                        <span style={{color:QB.textPrimary}}>{a.action}</span>
+                        {a.entity_name&&<span style={{color:QB.textMuted}}> · {a.entity_name}</span>}
+                      </div>
+                      <span style={{color:QB.textMuted,whiteSpace:"nowrap",fontSize:11}}>{timeAgo()}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );
