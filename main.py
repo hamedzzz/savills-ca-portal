@@ -3,7 +3,7 @@ from fastapi import FastAPI, HTTPException, Depends, Header, UploadFile, File, F
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
-import os, json, io, httpx, jwt, bcrypt, psycopg2, psycopg2.extras
+import os, json, io, httpx, jwt, bcrypt, psycopg2, psycopg2.extras, random, string
 from datetime import datetime, timedelta
 
 app = FastAPI()
@@ -258,6 +258,14 @@ def init_db():
     safe_exec(c, conn, """CREATE INDEX IF NOT EXISTS idx_rrm_lease_month ON rent_roll_monthly(lease_id, month)""")
     safe_exec(c, conn, """CREATE INDEX IF NOT EXISTS idx_rrm_upload_month ON rent_roll_monthly(upload_id, month)""")
     safe_exec(c, conn, "ALTER TABLE invoice_uploads ADD COLUMN IF NOT EXISTS report_month TEXT DEFAULT ''")
+    safe_exec(c, conn, """CREATE TABLE IF NOT EXISTS otp_sessions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES ca_users(id) ON DELETE CASCADE,
+        otp_code TEXT NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        used BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW()
+    )""")
     safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS tenant_number TEXT DEFAULT ''")
     safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS document_type TEXT DEFAULT ''")
     safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS document_no TEXT DEFAULT ''")
@@ -301,6 +309,35 @@ def startup(): init_db()
 def health(): return {"ok": True}
 
 def hash_password(p): return bcrypt.hashpw(p.encode(), bcrypt.gensalt()).decode()
+
+def generate_otp():
+    return ''.join(random.choices(string.digits, k=6))
+
+def send_otp_email(to_email: str, to_name: str, otp: str) -> bool:
+    if not SENDGRID_API_KEY: return False
+    try:
+        html = f"""<!DOCTYPE html><html><body style="font-family:-apple-system,sans-serif;background:#F4F5F7;padding:32px">
+        <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:8px;padding:32px;border:1px solid #E3E8EF">
+          <div style="height:4px;background:#FEDE07;border-radius:2px;margin-bottom:24px"></div>
+          <div style="font-size:18px;font-weight:700;color:#1C1C1C;margin-bottom:8px">Login Verification</div>
+          <div style="font-size:14px;color:#57647A;margin-bottom:24px">Hi {to_name}, use the code below to complete your login to Savills Egypt CA Portal.</div>
+          <div style="text-align:center;padding:20px;background:#F8F9FA;border-radius:8px;border:1px solid #E3E8EF;margin-bottom:20px">
+            <div style="font-size:36px;font-weight:700;letter-spacing:8px;color:#0077C5">{otp}</div>
+            <div style="font-size:12px;color:#8C96A3;margin-top:8px">Valid for 10 minutes</div>
+          </div>
+          <div style="font-size:12px;color:#8C96A3">If you didn't request this, please ignore this email.</div>
+          <div style="margin-top:20px;padding-top:16px;border-top:1px solid #F4F5F7;font-size:11px;color:#C4CBD6">Savills Egypt · Client Accounting · Property Management</div>
+        </div></body></html>"""
+        resp = httpx.post("https://api.sendgrid.com/v3/mail/send",
+            headers={{"Authorization": f"Bearer {{SENDGRID_API_KEY}}", "Content-Type": "application/json"}},
+            json={{"personalizations": [{{"to": [{{"email": to_email, "name": to_name}}]}}],
+                  "from": {{"email": "ahmed.hamed@savills.me", "name": "Savills Egypt — CA Portal"}},
+                  "subject": f"Your login code: {{otp}}",
+                  "content": [{{"type": "text/html", "value": html}}]}},
+            timeout=10)
+        return resp.status_code == 202
+    except Exception as e:
+        print(f"OTP email error: {{e}}"); return False
 def verify_password(p, h): return bcrypt.checkpw(p.encode(), h.encode())
 def create_token(data): return jwt.encode({**data, "exp": datetime.utcnow()+timedelta(days=7)}, SECRET_KEY, algorithm="HS256")
 
@@ -372,6 +409,51 @@ def login(data: LoginData):
     user = c.fetchone()
     if not user or not verify_password(data.password, user["hashed_password"]):
         conn.close(); raise HTTPException(401, "Invalid credentials")
+
+    # Check if user has email for OTP
+    if user.get("email"):
+        # Generate OTP
+        otp = generate_otp()
+        expires = datetime.utcnow() + timedelta(minutes=10)
+        # Clean old OTPs for this user
+        c.execute("DELETE FROM otp_sessions WHERE user_id=%s", (user["id"],))
+        c.execute("INSERT INTO otp_sessions (user_id, otp_code, expires_at) VALUES (%s,%s,%s)",
+                  (user["id"], otp, expires))
+        conn.commit()
+        # Send OTP email
+        send_otp_email(user["email"], user["full_name"], otp)
+        conn.close()
+        return {"otp_required": True, "user_id": user["id"],
+                "message": f"OTP sent to {user['email'][:3]}***@{user['email'].split('@')[1]}"}
+
+    # No email — direct login (fallback)
+    log_activity(conn, user["id"], "login", "auth", user["username"])
+    conn.commit(); conn.close()
+    token = create_token({"id": user["id"], "username": user["username"], "role": user["role"]})
+    return {"token": token, "user": {k: v for k, v in dict(user).items() if k != "hashed_password"}}
+
+@app.post("/auth/verify-otp")
+def verify_otp(data: dict):
+    user_id = data.get("user_id")
+    otp_code = data.get("otp_code","").strip()
+    conn = get_db(); c = conn.cursor()
+
+    c.execute("""SELECT * FROM otp_sessions
+                 WHERE user_id=%s AND used=FALSE AND expires_at > NOW()
+                 ORDER BY created_at DESC LIMIT 1""", (user_id,))
+    session = c.fetchone()
+
+    if not session or session["otp_code"] != otp_code:
+        conn.close(); raise HTTPException(401, "Invalid or expired OTP")
+
+    # Mark OTP as used
+    c.execute("UPDATE otp_sessions SET used=TRUE WHERE id=%s", (session["id"],))
+
+    # Get user
+    c.execute("SELECT * FROM ca_users WHERE id=%s AND is_active=TRUE", (user_id,))
+    user = c.fetchone()
+    if not user: conn.close(); raise HTTPException(401, "User not found")
+
     log_activity(conn, user["id"], "login", "auth", user["username"])
     conn.commit(); conn.close()
     token = create_token({"id": user["id"], "username": user["username"], "role": user["role"]})
