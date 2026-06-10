@@ -88,6 +88,7 @@ export default function Portal(){
   const[editingGuide,setEditingGuide]=useState(null);
   const[newGuideForm,setNewGuideForm]=useState({section:"",title:"",content:""});
   const[showGuideForm,setShowGuideForm]=useState(false);
+  const[docsExpanded,setDocsExpanded]=useState(false);
   const[sopVersion,setSopVersion]=useState("");
   const[sopDesc,setSopDesc]=useState("");
   const[properties,setProperties]=useState([]);
@@ -724,6 +725,12 @@ export default function Portal(){
     return"📌";
   };
 
+  const navSection = tab==="welcome"||tab==="collection"||tab==="rent-roll"||tab==="reports"?"home":
+                     tab==="kpis"?"kpis":
+                     tab==="doc-sop"||tab==="doc-guide"?"docs":
+                     ["email","manage-reports","users","customers","requests","activity","settings"].includes(tab)?"admin":
+                     tab==="profile"?"you":"home";
+
   return(
     <div style={{minHeight:"100vh",background:QB.bgPage,fontFamily:QB.fontFamily}}>
       <Flash/>
@@ -800,16 +807,40 @@ export default function Portal(){
           ))}
 
           {/* Documentation */}
-          <div style={{display:"flex",alignItems:"center",gap:14,padding:"11px 18px",cursor:"pointer",
-            color:tab==="documentation"?"#fff":navHover==="docs"?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.55)",
-            background:tab==="documentation"?"rgba(0,119,197,0.2)":navHover==="docs"?"rgba(255,255,255,0.06)":"transparent",
-            borderLeft:tab==="documentation"?`3px solid ${QB.blue}`:"3px solid transparent",transition:"all 0.15s",minHeight:44}}
-            onMouseEnter={()=>setNavHover("docs")}
-            onMouseLeave={()=>setNavHover("")}
-            onClick={()=>setTab("documentation")}>
-            <span style={{fontSize:18,width:24,textAlign:"center",flexShrink:0}}>📚</span>
-            <span style={{fontSize:13,fontWeight:tab==="documentation"?600:400,whiteSpace:"nowrap"}}>Documentation</span>
-          </div>
+          {(()=>{
+            const docTabs=["doc-sop","doc-guide"];
+            const docActive=docTabs.includes(tab);
+            return(
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:14,padding:"11px 18px",cursor:"pointer",
+                  color:docActive?"#fff":navHover==="docs"?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.55)",
+                  background:docActive?"rgba(0,119,197,0.2)":navHover==="docs"?"rgba(255,255,255,0.06)":"transparent",
+                  borderLeft:docActive?`3px solid ${QB.blue}`:"3px solid transparent",transition:"all 0.15s",minHeight:44}}
+                  onMouseEnter={()=>setNavHover("docs")}
+                  onMouseLeave={()=>setNavHover("")}
+                  onClick={()=>{setDocsExpanded(v=>!v);if(!docActive)setTab("doc-sop");}}>
+                  <span style={{fontSize:18,width:24,textAlign:"center",flexShrink:0}}>📚</span>
+                  <span style={{fontSize:13,fontWeight:docActive?600:400,whiteSpace:"nowrap",flex:1}}>Documentation</span>
+                  <span style={{fontSize:10,opacity:0.5}}>{docsExpanded?"▲":"▼"}</span>
+                </div>
+                {docsExpanded&&[
+                  {t:"doc-sop",icon:"📄",label:"CA SOPs"},
+                  {t:"doc-guide",icon:"📖",label:"How to use Portal"},
+                ].map(({t,icon,label})=>(
+                  <div key={t} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 18px 8px 54px",cursor:"pointer",
+                    color:tab===t?"#fff":"rgba(255,255,255,0.5)",
+                    background:tab===t?"rgba(0,119,197,0.25)":"transparent",
+                    borderLeft:tab===t?`3px solid ${QB.yellow}`:"3px solid transparent",
+                    fontSize:12,fontWeight:tab===t?600:400,whiteSpace:"nowrap",transition:"all 0.12s"}}
+                    onClick={()=>setTab(t)}
+                    onMouseEnter={e=>{if(tab!==t)e.currentTarget.style.background="rgba(255,255,255,0.06)";}}
+                    onMouseLeave={e=>{if(tab!==t)e.currentTarget.style.background="transparent";}}>
+                    <span style={{fontSize:13}}>{icon}</span><span>{label}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
 
           {/* Admin */}
           {isAdmin&&(()=>{
@@ -888,7 +919,8 @@ export default function Portal(){
           {tab==="rent-roll"&&"Rent Roll"}
           {tab==="reports"&&"Reports"}
           {tab==="kpis"&&"KPIs"}
-          {tab==="documentation"&&"Documentation"}
+          {tab==="doc-sop"&&"Documentation — CA SOPs"}
+          {tab==="doc-guide"&&"Documentation — How to use Portal"}
           {tab==="users"&&"Admin — Users"}
           {tab==="customers"&&"Admin — Customers"}
           {tab==="manage-reports"&&"Admin — Reports"}
@@ -1096,16 +1128,9 @@ export default function Portal(){
         {/* ══════════════════════════════════════════════════════════════════
             DOCUMENTATION TAB
         ══════════════════════════════════════════════════════════════════ */}
-        {tab==="documentation"&&<div>
-          {/* Sub-tabs */}
-          <div style={{...s.tabBar,marginBottom:20}}>
-            {[{id:"sop",label:"📄 Client Accounting SOPs"},{id:"guide",label:"📖 How to use CA Portal"}].map(t=>(
-              <button key={t.id} style={s.tab(docSubTab===t.id)} onClick={()=>setDocSubTab(t.id)}>{t.label}</button>
-            ))}
-          </div>
-
+        {(tab==="doc-sop"||tab==="doc-guide")&&<div>
           {/* SOP sub-tab */}
-          {docSubTab==="sop"&&<div>
+          {tab==="doc-sop"&&<div>
             {/* Upload - admin only */}
             {isAdmin&&<div style={{...s.card,marginBottom:16}}>
               <div style={{...s.cardTitle,marginBottom:12}}>Upload SOP Document</div>
@@ -1194,7 +1219,7 @@ export default function Portal(){
           </div>}
 
           {/* How to use sub-tab */}
-          {docSubTab==="guide"&&<div>
+          {tab==="doc-guide"&&<div>
             {isAdmin&&<div style={{marginBottom:12,display:"flex",justifyContent:"flex-end"}}>
               <button style={{...s.btnP,padding:"6px 14px",fontSize:12}} onClick={()=>{setShowGuideForm(true);setNewGuideForm({section:"",title:"",content:""});}}>+ Add section</button>
             </div>}
