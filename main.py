@@ -192,6 +192,29 @@ def init_db():
         updated_at TIMESTAMP DEFAULT NOW()
     )""")
 
+    c.execute("""CREATE TABLE IF NOT EXISTS sop_documents (
+        id SERIAL PRIMARY KEY,
+        filename TEXT NOT NULL,
+        version TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        file_data TEXT NOT NULL,
+        file_size INTEGER DEFAULT 0,
+        uploaded_by INTEGER NOT NULL REFERENCES ca_users(id),
+        upload_date TIMESTAMP DEFAULT NOW(),
+        is_active BOOLEAN DEFAULT TRUE
+    )""")
+
+    c.execute("""CREATE TABLE IF NOT EXISTS portal_guide (
+        id SERIAL PRIMARY KEY,
+        section TEXT NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        order_index INTEGER DEFAULT 0,
+        created_by INTEGER NOT NULL REFERENCES ca_users(id),
+        updated_by INTEGER REFERENCES ca_users(id),
+        updated_at TIMESTAMP DEFAULT NOW()
+    )""")
+
     c.execute("""CREATE TABLE IF NOT EXISTS customers (
         id SERIAL PRIMARY KEY,
         brand_name TEXT NOT NULL,
@@ -267,6 +290,19 @@ def init_db():
         created_at TIMESTAMP DEFAULT NOW()
     )""")
     safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS tenant_number TEXT DEFAULT ''")
+    # Seed default How to use guide
+    default_guide = [
+        ("getting-started", "Getting Started", "Welcome to the Savills Egypt CA Portal. This guide will help you navigate and use the portal effectively.", 1),
+        ("collection", "Collection Module", "The Collection module allows you to view and track rent collection data across all properties. Use the filters to narrow down by property and month.", 2),
+        ("rent-roll", "Rent Roll", "The Rent Roll section shows all active leases. You can filter by property, sub-location, unit type, and expiry date. Click any lease to view its full details including the payment schedule.", 3),
+        ("invoice-recon", "Invoice Reconciliation", "Upload the Oracle Lease Summary Report to reconcile invoiced vs not-invoiced leases for any month. Use the status filter to focus on not-invoiced items and add comments with reasons.", 4),
+        ("reports", "Reports", "Access Power BI reports embedded directly in the portal. Click any report card to open the full dashboard.", 5),
+        ("kpis", "KPI Dashboard", "The KPI Dashboard shows a summary of collection performance and rent roll metrics for all properties. Use the property selector to filter by property.", 6),
+    ]
+    for section, title, content, order in default_guide:
+        safe_exec(c, conn, """INSERT INTO portal_guide (section, title, content, order_index, created_by)
+            VALUES (%s,%s,%s,%s,1) ON CONFLICT DO NOTHING""",
+            (section, title, content, order))
     safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS document_type TEXT DEFAULT ''")
     safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS document_no TEXT DEFAULT ''")
     conn.commit()
@@ -1587,6 +1623,88 @@ def get_available_months(property_id: int, sub_location: str = None,
     rows = [r["month"] for r in c.fetchall()]
     conn.close()
     return rows
+
+# ── Documentation ────────────────────────────────────────────────────────────
+@app.post("/sop/upload")
+async def upload_sop(
+    version: str = Form(default=""),
+    description: str = Form(default=""),
+    file: UploadFile = File(...),
+    current_user=Depends(require_admin)
+):
+    import base64
+    content = await file.read()
+    file_b64 = base64.b64encode(content).decode()
+    conn = get_db(); c = conn.cursor()
+    c.execute("""INSERT INTO sop_documents (filename,version,description,file_data,file_size,uploaded_by)
+                 VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
+              (file.filename, version, description, file_b64, len(content), current_user["id"]))
+    new_id = c.fetchone()["id"]
+    log_activity(conn, current_user["id"], "uploaded SOP", "document", file.filename, f"v{version}")
+    conn.commit(); conn.close()
+    return {"ok": True, "id": new_id}
+
+@app.get("/sop/documents")
+def list_sop_documents(current_user=Depends(get_current_user)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("""SELECT id, filename, version, description, file_size, upload_date,
+                        u.full_name as uploaded_by_name, is_active
+                 FROM sop_documents s JOIN ca_users u ON s.uploaded_by=u.id
+                 WHERE s.is_active=TRUE ORDER BY s.upload_date DESC""")
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close(); return rows
+
+@app.get("/sop/download/{doc_id}")
+def download_sop(doc_id: int, current_user=Depends(get_current_user)):
+    import base64
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT filename, file_data FROM sop_documents WHERE id=%s AND is_active=TRUE", (doc_id,))
+    row = c.fetchone(); conn.close()
+    if not row: raise HTTPException(404, "Document not found")
+    from fastapi.responses import Response
+    file_bytes = base64.b64decode(row["file_data"])
+    return Response(content=file_bytes, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{row["filename"]}"'})
+
+@app.delete("/sop/{doc_id}")
+def delete_sop(doc_id: int, admin=Depends(require_admin)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("UPDATE sop_documents SET is_active=FALSE WHERE id=%s", (doc_id,))
+    log_activity(conn, admin["id"], "deleted SOP", "document", str(doc_id))
+    conn.commit(); conn.close(); return {"ok": True}
+
+@app.get("/guide")
+def get_guide(current_user=Depends(get_current_user)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT * FROM portal_guide ORDER BY order_index")
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close(); return rows
+
+@app.post("/guide")
+def create_guide_section(data: dict, admin=Depends(require_admin)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("""INSERT INTO portal_guide (section,title,content,order_index,created_by)
+                 VALUES (%s,%s,%s,%s,%s) RETURNING id""",
+              (data["section"], data["title"], data["content"],
+               data.get("order_index",99), admin["id"]))
+    new_id = c.fetchone()["id"]
+    conn.commit(); conn.close(); return {"id": new_id}
+
+@app.patch("/guide/{guide_id}")
+def update_guide_section(guide_id: int, data: dict, admin=Depends(require_admin)):
+    conn = get_db(); c = conn.cursor()
+    allowed = {k:v for k,v in data.items() if k in ("title","content","order_index")}
+    allowed["updated_by"] = admin["id"]
+    allowed["updated_at"] = datetime.utcnow()
+    set_clause = ", ".join(f"{k}=%s" for k in allowed)
+    c.execute(f"UPDATE portal_guide SET {set_clause} WHERE id=%s", (*allowed.values(), guide_id))
+    conn.commit(); conn.close(); return {"ok": True}
+
+@app.delete("/guide/{guide_id}")
+def delete_guide_section(guide_id: int, admin=Depends(require_admin)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("DELETE FROM portal_guide WHERE id=%s", (guide_id,))
+    conn.commit(); conn.close(); return {"ok": True}
 
 @app.get("/pbi/embed-token/{report_id}")
 async def get_embed_token(report_id: str, workspace_id: str = PBI_WORKSPACE_ID, current_user=Depends(get_current_user)):
