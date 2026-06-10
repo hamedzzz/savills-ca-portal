@@ -81,6 +81,15 @@ export default function Portal(){
   const[adminExpanded,setAdminExpanded]=useState(false);
   const[selectedNavProp,setSelectedNavProp]=useState("");
   const[showAddPropForm,setShowAddPropForm]=useState(false);
+  const[docSubTab,setDocSubTab]=useState("sop");
+  const[sopDocs,setSopDocs]=useState([]);
+  const[guideItems,setGuideItems]=useState([]);
+  const[uploadingSOP,setUploadingSOP]=useState(false);
+  const[editingGuide,setEditingGuide]=useState(null);
+  const[newGuideForm,setNewGuideForm]=useState({section:"",title:"",content:""});
+  const[showGuideForm,setShowGuideForm]=useState(false);
+  const[sopVersion,setSopVersion]=useState("");
+  const[sopDesc,setSopDesc]=useState("");
   const[properties,setProperties]=useState([]);
   const[archivedProps,setArchivedProps]=useState([]);
   const[showArchived,setShowArchived]=useState(false);
@@ -469,6 +478,16 @@ export default function Portal(){
     if(reconProp&&reconMonth) loadReconLines(reconProp,reconMonth,reconSub,reconElement,reconStatus);
   },[reconStatus]);
 
+  const loadSopDocs=async()=>{
+    const d=await apiFetch("/sop/documents");
+    if(d) setSopDocs(d);
+  };
+
+  const loadGuide=async()=>{
+    const d=await apiFetch("/guide");
+    if(d) setGuideItems(d);
+  };
+
   const loadReconUploadLog=async(propId)=>{
     if(!propId) return;
     const d=await apiFetch(`/invoice-recon/uploads?property_id=${propId}`);
@@ -553,7 +572,7 @@ export default function Portal(){
   };
 
   useEffect(()=>{
-    load();loadEditRequests();loadRentRolls();loadCustomers();loadActivities();
+    load();loadEditRequests();loadRentRolls();loadCustomers();loadActivities();loadSopDocs();loadGuide();
     const h=new Date().getHours();
     setWelcomeGreeting(h<12?"Good morning":h<17?"Good afternoon":"Good evening");
   },[]);
@@ -780,6 +799,18 @@ export default function Portal(){
             </div>
           ))}
 
+          {/* Documentation */}
+          <div style={{display:"flex",alignItems:"center",gap:14,padding:"11px 18px",cursor:"pointer",
+            color:tab==="documentation"?"#fff":navHover==="docs"?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.55)",
+            background:tab==="documentation"?"rgba(0,119,197,0.2)":navHover==="docs"?"rgba(255,255,255,0.06)":"transparent",
+            borderLeft:tab==="documentation"?`3px solid ${QB.blue}`:"3px solid transparent",transition:"all 0.15s",minHeight:44}}
+            onMouseEnter={()=>setNavHover("docs")}
+            onMouseLeave={()=>setNavHover("")}
+            onClick={()=>setTab("documentation")}>
+            <span style={{fontSize:18,width:24,textAlign:"center",flexShrink:0}}>📚</span>
+            <span style={{fontSize:13,fontWeight:tab==="documentation"?600:400,whiteSpace:"nowrap"}}>Documentation</span>
+          </div>
+
           {/* Admin */}
           {isAdmin&&(()=>{
             const adminTabs=["email","manage-reports","users","customers","requests","activity","settings"];
@@ -857,6 +888,7 @@ export default function Portal(){
           {tab==="rent-roll"&&"Rent Roll"}
           {tab==="reports"&&"Reports"}
           {tab==="kpis"&&"KPIs"}
+          {tab==="documentation"&&"Documentation"}
           {tab==="users"&&"Admin — Users"}
           {tab==="customers"&&"Admin — Customers"}
           {tab==="manage-reports"&&"Admin — Reports"}
@@ -1060,6 +1092,137 @@ export default function Portal(){
             </div>
           );
         })()}
+
+        {/* ══════════════════════════════════════════════════════════════════
+            DOCUMENTATION TAB
+        ══════════════════════════════════════════════════════════════════ */}
+        {tab==="documentation"&&<div>
+          {/* Sub-tabs */}
+          <div style={{...s.tabBar,marginBottom:20}}>
+            {[{id:"sop",label:"📄 Client Accounting SOPs"},{id:"guide",label:"📖 How to use CA Portal"}].map(t=>(
+              <button key={t.id} style={s.tab(docSubTab===t.id)} onClick={()=>setDocSubTab(t.id)}>{t.label}</button>
+            ))}
+          </div>
+
+          {/* SOP sub-tab */}
+          {docSubTab==="sop"&&<div>
+            {/* Upload - admin only */}
+            {isAdmin&&<div style={{...s.card,marginBottom:16}}>
+              <div style={{...s.cardTitle,marginBottom:12}}>Upload SOP Document</div>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
+                <div>
+                  <label style={s.label}>Version</label>
+                  <input style={{...s.input,width:100}} placeholder="e.g. 1.2" value={sopVersion} onChange={e=>setSopVersion(e.target.value)}/>
+                </div>
+                <div style={{flex:1,minWidth:200}}>
+                  <label style={s.label}>Description</label>
+                  <input style={s.input} placeholder="e.g. Collection SOP - Updated debt escalation" value={sopDesc} onChange={e=>setSopDesc(e.target.value)}/>
+                </div>
+                <label style={{...s.btnP,padding:"8px 16px",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+                  {uploadingSOP?"⏳ Uploading...":"📥 Upload PDF"}
+                  <input type="file" accept=".pdf" style={{display:"none"}} disabled={uploadingSOP} onChange={async e=>{
+                    const file=e.target.files[0]; if(!file) return;
+                    setUploadingSOP(true);
+                    const fd=new FormData(); fd.append("file",file);
+                    fd.append("version",sopVersion); fd.append("description",sopDesc);
+                    try{
+                      const token=localStorage.getItem("ca_token");
+                      const API=import.meta.env.VITE_API_URL||"http://localhost:8001";
+                      const res=await fetch(`${API}/sop/upload`,{method:"POST",headers:{Authorization:`Bearer ${token}`},body:fd});
+                      const r=await res.json();
+                      if(r.ok){flash("SOP uploaded successfully");setSopVersion("");setSopDesc("");loadSopDocs();}
+                      else flash(r.detail||"Upload failed","error");
+                    }catch(ex){flash("Upload failed","error");}
+                    finally{setUploadingSOP(false);e.target.value="";}
+                  }}/>
+                </label>
+              </div>
+            </div>}
+
+            {/* SOP log */}
+            <div style={s.card}>
+              <div style={{...s.cardTitle,marginBottom:12}}>SOP Documents</div>
+              {sopDocs.length===0
+                ?<div style={{textAlign:"center",padding:"30px",color:QB.textMuted,fontSize:13}}>No documents uploaded yet</div>
+                :<div style={{overflowX:"auto"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                    <thead>
+                      <tr style={{background:QB.bgSidebar}}>
+                        {["Document","Version","Description","Uploaded by","Date","Size",""].map(h=>(
+                          <th key={h} style={{...s.th,textAlign:"left"}}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sopDocs.map((doc,i)=>(
+                        <tr key={doc.id} style={{background:i%2===0?QB.bgCard:QB.bgSidebar,borderBottom:`1px solid ${QB.borderLight}`}}>
+                          <td style={{...s.td,fontWeight:600,color:QB.textPrimary}}>
+                            <span style={{marginRight:6}}>📄</span>{doc.filename}
+                          </td>
+                          <td style={s.td}>
+                            {doc.version&&<span style={{padding:"2px 8px",background:QB.blueLight,color:QB.blue,borderRadius:10,fontSize:11,fontWeight:600}}>v{doc.version}</span>}
+                          </td>
+                          <td style={{...s.td,color:QB.textSecondary,maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{doc.description||"—"}</td>
+                          <td style={{...s.td,color:QB.textSecondary}}>{doc.uploaded_by_name}</td>
+                          <td style={{...s.td,color:QB.textMuted,whiteSpace:"nowrap"}}>{new Date(doc.upload_date).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}</td>
+                          <td style={{...s.td,color:QB.textMuted}}>{doc.file_size?(doc.file_size/1024).toFixed(0)+"KB":"—"}</td>
+                          <td style={{...s.td}}>
+                            <div style={{display:"flex",gap:6}}>
+                              <button style={{...s.btnP,padding:"4px 12px",fontSize:11}} onClick={async()=>{
+                                const token=localStorage.getItem("ca_token");
+                                const API=import.meta.env.VITE_API_URL||"http://localhost:8001";
+                                const res=await fetch(`${API}/sop/download/${doc.id}`,{headers:{Authorization:`Bearer ${token}`}});
+                                const blob=await res.blob();
+                                const url=URL.createObjectURL(blob);
+                                const a=document.createElement("a"); a.href=url; a.download=doc.filename;
+                                document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+                              }}>⬇ Download</button>
+                              {isAdmin&&<button style={{...s.btnDanger,padding:"4px 10px",fontSize:11}} onClick={async()=>{
+                                if(!confirm("Delete this document?")) return;
+                                await apiFetch(`/sop/${doc.id}`,{method:"DELETE"});
+                                flash("Document deleted"); loadSopDocs();
+                              }}>✕</button>}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              }
+            </div>
+          </div>}
+
+          {/* How to use sub-tab */}
+          {docSubTab==="guide"&&<div>
+            {isAdmin&&<div style={{marginBottom:12,display:"flex",justifyContent:"flex-end"}}>
+              <button style={{...s.btnP,padding:"6px 14px",fontSize:12}} onClick={()=>{setShowGuideForm(true);setNewGuideForm({section:"",title:"",content:""});}}>+ Add section</button>
+            </div>}
+
+            {guideItems.length===0
+              ?<div style={{...s.card,textAlign:"center",padding:"40px",color:QB.textMuted}}>No guide content yet</div>
+              :<div style={{display:"flex",flexDirection:"column",gap:12}}>
+                {guideItems.map((g,i)=>(
+                  <div key={g.id} style={s.card}>
+                    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:8}}>
+                      <div style={{fontSize:15,fontWeight:600,color:QB.textPrimary}}>{g.title}</div>
+                      {isAdmin&&<div style={{display:"flex",gap:6,flexShrink:0,marginLeft:12}}>
+                        <button style={{...s.btnS,padding:"3px 10px",fontSize:11}} onClick={()=>setEditingGuide({...g})}>Edit</button>
+                        <button style={{...s.btnDanger,padding:"3px 8px",fontSize:11}} onClick={async()=>{
+                          if(!confirm("Delete this section?")) return;
+                          await apiFetch(`/guide/${g.id}`,{method:"DELETE"});
+                          flash("Section deleted"); loadGuide();
+                        }}>✕</button>
+                      </div>}
+                    </div>
+                    <div style={{fontSize:13,color:QB.textSecondary,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{g.content}</div>
+                    {g.updated_at&&<div style={{marginTop:8,fontSize:11,color:QB.textMuted}}>Last updated: {new Date(g.updated_at).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})}</div>}
+                  </div>
+                ))}
+              </div>
+            }
+          </div>}
+        </div>}
 
         {/* ══════════════════════════════════════════════════════════════════
             PROPERTIES TAB
@@ -3718,6 +3881,42 @@ export default function Portal(){
                 }catch(ex){flash(ex.message,"error");}
               }}>{editCustomer?"Save changes":"Add customer"}</button>
               <button style={s.btnS} onClick={()=>setShowCustomerForm(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>}
+
+        {/* Add/Edit Guide Section Modal */}
+        {(showGuideForm||editingGuide)&&<div style={s.overlay} onClick={()=>{setShowGuideForm(false);setEditingGuide(null);}}>
+          <div style={{...s.modal,width:560}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+              <div style={s.modalTitle}>{editingGuide?"Edit section":"Add section"}</div>
+              <button onClick={()=>{setShowGuideForm(false);setEditingGuide(null);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:QB.textMuted}}>✕</button>
+            </div>
+            <div style={{marginBottom:10}}>
+              <label style={s.label}>Title</label>
+              <input style={s.input} value={editingGuide?editingGuide.title:newGuideForm.title}
+                onChange={e=>editingGuide?setEditingGuide(g=>({...g,title:e.target.value})):setNewGuideForm(f=>({...f,title:e.target.value}))}
+                placeholder="e.g. Getting Started"/>
+            </div>
+            <div style={{marginBottom:16}}>
+              <label style={s.label}>Content</label>
+              <textarea style={{...s.input,minHeight:160,resize:"vertical",lineHeight:1.6}}
+                value={editingGuide?editingGuide.content:newGuideForm.content}
+                onChange={e=>editingGuide?setEditingGuide(g=>({...g,content:e.target.value})):setNewGuideForm(f=>({...f,content:e.target.value}))}
+                placeholder="Write the guide content here..."/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button style={s.btnP} onClick={async()=>{
+                if(editingGuide){
+                  await apiFetch(`/guide/${editingGuide.id}`,{method:"PATCH",body:JSON.stringify({title:editingGuide.title,content:editingGuide.content})});
+                  flash("Section updated"); setEditingGuide(null); loadGuide();
+                } else {
+                  if(!newGuideForm.title||!newGuideForm.content){flash("Title and content required","error");return;}
+                  await apiFetch("/guide",{method:"POST",body:JSON.stringify({...newGuideForm,section:newGuideForm.title.toLowerCase().replace(/\s+/g,"-"),order_index:99})});
+                  flash("Section added"); setShowGuideForm(false); setNewGuideForm({section:"",title:"",content:""}); loadGuide();
+                }
+              }}>{editingGuide?"Save changes":"Add section"}</button>
+              <button style={s.btnS} onClick={()=>{setShowGuideForm(false);setEditingGuide(null);}}>Cancel</button>
             </div>
           </div>
         </div>}
