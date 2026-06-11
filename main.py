@@ -206,7 +206,7 @@ def init_db():
 
     c.execute("""CREATE TABLE IF NOT EXISTS portal_guide (
         id SERIAL PRIMARY KEY,
-        section TEXT NOT NULL,
+        section TEXT NOT NULL UNIQUE,
         title TEXT NOT NULL,
         content TEXT NOT NULL,
         order_index INTEGER DEFAULT 0,
@@ -214,6 +214,7 @@ def init_db():
         updated_by INTEGER REFERENCES ca_users(id),
         updated_at TIMESTAMP DEFAULT NOW()
     )""")
+    safe_exec(c, conn, "ALTER TABLE portal_guide ADD CONSTRAINT IF NOT EXISTS portal_guide_section_unique UNIQUE (section)")
 
     c.execute("""CREATE TABLE IF NOT EXISTS customers (
         id SERIAL PRIMARY KEY,
@@ -301,7 +302,7 @@ def init_db():
     ]
     for section, title, content, order in default_guide:
         safe_exec(c, conn, """INSERT INTO portal_guide (section, title, content, order_index, created_by)
-            VALUES (%s,%s,%s,%s,1) ON CONFLICT DO NOTHING""",
+            VALUES (%s,%s,%s,%s,1) ON CONFLICT (section) DO NOTHING""",
             (section, title, content, order))
     safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS document_type TEXT DEFAULT ''")
     safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS document_no TEXT DEFAULT ''")
