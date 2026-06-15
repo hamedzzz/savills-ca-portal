@@ -1155,10 +1155,10 @@ export default function Portal(){
               أدخل تفاصيل الصفقة
             </div>
             <textarea style={{...s.input,width:"100%",minHeight:160,resize:"vertical",fontSize:13,lineHeight:1.7,fontFamily:QB.fontFamily}}
-              placeholder={"مثال:
-المستأجر: سيلانترو
-الوحدة: F-01
-المشروع: Giza Zoo Commercial Destination
+              placeholder={`مثال:
+  المستأجر: سيلانترو
+  الوحدة: F-01
+  المشروع: Giza Zoo Commercial Destination`}
 بداية العقد: نوفمبر 2025
 مدة العقد: 5 سنوات
 إيجار شهري السنة الأولى: 150,000 جنيه
