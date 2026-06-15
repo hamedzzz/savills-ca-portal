@@ -1705,6 +1705,127 @@ def delete_guide_section(guide_id: int, admin=Depends(require_admin)):
     c.execute("DELETE FROM portal_guide WHERE id=%s", (guide_id,))
     conn.commit(); conn.close(); return {"ok": True}
 
+# ── Financial Annex ───────────────────────────────────────────────────────────
+@app.post("/annex/extract")
+async def extract_annex_data(data: dict, current_user=Depends(require_editor)):
+    """Use Claude to extract deal data from free-text input"""
+    text = data.get("text", "").strip()
+    if not text:
+        raise HTTPException(400, "No text provided")
+
+    prompt = """You are a real estate financial analyst at Savills Egypt.
+Extract the following fields from the lease deal description below and return ONLY valid JSON.
+If a field is not mentioned, use null.
+
+Fields to extract:
+{
+  "tenant_name": "string — tenant/brand name",
+  "unit": "string — unit number or code",
+  "project": "string — project/mall name",
+  "lease_start": "YYYY-MM-DD — lease commencement date",
+  "num_years": integer,
+  "base_monthly": float — base monthly rent EGP (Year 1, excluding VAT),
+  "escalation": float — annual escalation rate as decimal (e.g. 0.10 for 10%),
+  "sc_monthly_y1": float — Year 1 monthly service charge EGP,
+  "sc_per_sqm": float or null — SC rate per sqm if mentioned,
+  "area_sqm": float or null — total area sqm,
+  "vat_rent": float — VAT on rent as decimal (default 0.01 per Law 157/2025),
+  "vat_sc": float — VAT on SC as decimal (default 0.14),
+  "revenue_share_years": integer — number of Revenue Share years at start (default 0),
+  "notes": "string — any important notes or assumptions made"
+}
+
+Deal description:
+""" + text
+
+    resp = httpx.post("https://api.anthropic.com/v1/messages",
+        headers={"x-api-key": os.getenv("ANTHROPIC_API_KEY",""),
+                 "anthropic-version": "2023-06-01",
+                 "content-type": "application/json"},
+        json={"model": "claude-sonnet-4-6",
+              "max_tokens": 1000,
+              "messages": [{"role": "user", "content": prompt}]},
+        timeout=30)
+
+    if resp.status_code != 200:
+        raise HTTPException(500, f"AI error: {resp.text[:200]}")
+
+    content = resp.json()["content"][0]["text"].strip()
+    # Strip markdown code blocks if present
+    if content.startswith("```"):
+        content = content.split("```")[1]
+        if content.startswith("json"):
+            content = content[4:]
+    content = content.strip()
+
+    try:
+        extracted = json.loads(content)
+    except Exception as e:
+        raise HTTPException(500, f"Could not parse AI response: {e}")
+
+    return {"ok": True, "data": extracted}
+
+
+@app.post("/annex/generate")
+async def generate_annex(data: dict, current_user=Depends(require_editor)):
+    """Generate Excel financial annex from structured data"""
+    from datetime import date as dt_date
+    import base64, io
+
+    try:
+        lease_start_str = data.get("lease_start", "")
+        if isinstance(lease_start_str, str):
+            from datetime import datetime
+            lease_start = datetime.strptime(lease_start_str, "%Y-%m-%d").date()
+        else:
+            lease_start = dt_date.today()
+
+        annex_data = {
+            "tenant_name":          data.get("tenant_name", "Tenant"),
+            "unit":                 data.get("unit", "—"),
+            "project":              data.get("project", "—"),
+            "lease_start":          lease_start,
+            "num_years":            int(data.get("num_years", 5)),
+            "base_monthly":         float(data.get("base_monthly", 0)),
+            "escalation":           float(data.get("escalation", 0.10)),
+            "sc_monthly_y1":        float(data.get("sc_monthly_y1", 0)),
+            "sc_escalation":        float(data.get("sc_escalation", data.get("escalation", 0.10))),
+            "vat_rent":             float(data.get("vat_rent", 0.01)),
+            "vat_sc":               float(data.get("vat_sc", 0.14)),
+            "revenue_share_years":  int(data.get("revenue_share_years", 0)),
+        }
+
+        # Build Excel in memory
+        import sys, os
+        sys.path.insert(0, "/app")
+        from build_annex import build_annex
+
+        tmp_path = f"/tmp/annex_{current_user['id']}_{int(__import__('time').time())}.xlsx"
+        years, deposit = build_annex(annex_data, tmp_path)
+
+        with open(tmp_path, "rb") as f:
+            file_bytes = f.read()
+        os.remove(tmp_path)
+
+        file_b64 = base64.b64encode(file_bytes).decode()
+        filename = f"Financial_Annex_{annex_data['tenant_name'].replace(' ','_')}_{annex_data['project'][:10].replace(' ','_')}.xlsx"
+
+        log_activity(conn := get_db(), current_user["id"],
+                     "generated annex", "document",
+                     annex_data["tenant_name"], annex_data["project"])
+        conn.commit(); conn.close()
+
+        return {"ok": True, "filename": filename,
+                "file_b64": file_b64,
+                "summary": {
+                    "years": [{k: v for k,v in y.items() if k != "label"} for y in years],
+                    "deposit": deposit
+                }}
+
+    except Exception as e:
+        raise HTTPException(500, f"Annex generation error: {e}")
+
+
 @app.get("/pbi/embed-token/{report_id}")
 async def get_embed_token(report_id: str, workspace_id: str = PBI_WORKSPACE_ID, current_user=Depends(get_current_user)):
     try:
