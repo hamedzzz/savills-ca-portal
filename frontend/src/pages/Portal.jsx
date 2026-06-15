@@ -1162,9 +1162,9 @@ export default function Portal(){
 بداية العقد: نوفمبر 2025
 مدة العقد: 5 سنوات
 إيجار شهري السنة الأولى: 150,000 جنيه
-تصاعد سنوي: 10%`}
+تصاعد سنوي: 10%
 رسوم خدمات شهرية: 30,000 جنيه
-سنة Revenue Share: لا"}
+سنة Revenue Share: لا`}
               value={annexText} onChange={e=>setAnnexText(e.target.value)}/>
             <div style={{display:"flex",gap:8,marginTop:10}}>
               <button style={{...s.btnP,padding:"8px 20px"}} disabled={!annexText.trim()||annexLoading}
