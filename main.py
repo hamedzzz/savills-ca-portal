@@ -1746,7 +1746,7 @@ Deal description:
         resp = httpx.post("https://openrouter.ai/api/v1/chat/completions",
             headers={"Authorization": f"Bearer {openrouter_key}",
                      "Content-Type": "application/json"},
-            json={"model": "google/gemini-2.0-flash-001",
+            json={"model": "google/gemini-2.5-flash",
                   "max_tokens": 1000,
                   "messages": [{"role": "user", "content": prompt}]},
             timeout=30)
