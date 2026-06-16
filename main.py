@@ -1738,16 +1738,16 @@ Fields to extract:
 Deal description:
 """ + text
 
-   gemini_key = os.getenv("GEMINI_API_KEY", "")
-resp = httpx.post(
-    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}",
-    headers={"content-type": "application/json"},
-    json={"contents": [{"parts": [{"text": prompt}]}]},
-    timeout=30)
-if resp.status_code != 200:
-    raise HTTPException(500, f"AI error: {resp.text[:200]}")
+gemini_key = os.getenv("GEMINI_API_KEY", "")
+    resp = httpx.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}",
+        headers={"content-type": "application/json"},
+        json={"contents": [{"parts": [{"text": prompt}]}]},
+        timeout=30)
+    if resp.status_code != 200:
+        raise HTTPException(500, f"AI error: {resp.text[:200]}")
 
-content = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    content = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
     # Strip markdown code blocks if present
     if content.startswith("```"):
         content = content.split("```")[1]
