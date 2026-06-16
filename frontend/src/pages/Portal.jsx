@@ -1155,16 +1155,7 @@ export default function Portal(){
               أدخل تفاصيل الصفقة
             </div>
             <textarea style={{...s.input,width:"100%",minHeight:160,resize:"vertical",fontSize:13,lineHeight:1.7,fontFamily:QB.fontFamily}}
-              placeholder={"مثال:
-المستأجر: سيلانترو
-الوحدة: F-01
-المشروع: Giza Zoo Commercial Destination
-بداية العقد: نوفمبر 2025
-مدة العقد: 5 سنوات
-إيجار شهري السنة الأولى: 150,000 جنيه
-تصاعد سنوي: 10%
-رسوم خدمات شهرية: 30,000 جنيه
-سنة Revenue Share: لا"}
+placeholder={"مثال:\nالمستأجر: سيلانترو\nالوحدة: F-01\nالمشروع: Giza Zoo Commercial Destination\nبداية العقد: نوفمبر 2025\nمدة العقد: 5 سنوات\nإيجار شهري السنة الأولى: 150,000 جنيه\nتصاعد سنوي: 10%\nرسوم خدمات شهرية: 30,000 جنيه\nسنة Revenue Share: لا\nرسوم تسويق: 2%"}
               value={annexText} onChange={e=>setAnnexText(e.target.value)}/>
             <div style={{display:"flex",gap:8,marginTop:10}}>
               <button style={{...s.btnP,padding:"8px 20px"}} disabled={!annexText.trim()||annexLoading}
