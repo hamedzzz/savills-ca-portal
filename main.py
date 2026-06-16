@@ -1738,32 +1738,44 @@ Fields to extract:
 Deal description:
 """ + text
 
-    # Supports OpenRouter (OPENROUTER_API_KEY) or Google Gemini (GEMINI_API_KEY)
-    openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
+    # Prioritize Google Gemini Direct API (GEMINI_API_KEY)
     gemini_key     = os.getenv("GEMINI_API_KEY", "")
+    openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
 
-    if openrouter_key:
+    if gemini_key:
+        # Using Gemini 2.0 Pro Exp (Current best Pro model)
+        model_id = "gemini-2.0-pro-exp-02-05" 
+        resp = httpx.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={gemini_key}",
+            headers={"Content-Type": "application/json"},
+            json={"contents": [{"parts": [{"text": prompt}]}],
+                  "generationConfig": {"maxOutputTokens": 2000, "temperature": 0.1}},
+            timeout=60)
+        if resp.status_code != 200:
+            # Fallback to 1.5 Pro if 2.0 is not available for this key yet
+            model_id = "gemini-1.5-pro"
+            resp = httpx.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={gemini_key}",
+                headers={"Content-Type": "application/json"},
+                json={"contents": [{"parts": [{"text": prompt}]}],
+                      "generationConfig": {"maxOutputTokens": 2000, "temperature": 0.1}},
+                timeout=60)
+            
+        if resp.status_code != 200:
+            raise HTTPException(500, f"Gemini API error: {resp.text[:200]}")
+        content = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+
+    elif openrouter_key:
         resp = httpx.post("https://openrouter.ai/api/v1/chat/completions",
             headers={"Authorization": f"Bearer {openrouter_key}",
                      "Content-Type": "application/json"},
-            json={"model": "google/gemini-2.5-pro",
+            json={"model": "google/gemini-pro-1.5",
                   "max_tokens": 1000,
                   "messages": [{"role": "user", "content": prompt}]},
             timeout=30)
         if resp.status_code != 200:
-            raise HTTPException(500, f"AI error: {resp.text[:200]}")
+            raise HTTPException(500, f"OpenRouter AI error: {resp.text[:200]}")
         content = resp.json()["choices"][0]["message"]["content"].strip()
-
-    elif gemini_key:
-        resp = httpx.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={gemini_key}",
-            headers={"Content-Type": "application/json"},
-            json={"contents": [{"parts": [{"text": prompt}]}],
-                  "generationConfig": {"maxOutputTokens": 1000}},
-            timeout=30)
-        if resp.status_code != 200:
-            raise HTTPException(500, f"AI error: {resp.text[:200]}")
-        content = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
 
     else:
         raise HTTPException(500, "No AI API key configured — set OPENROUTER_API_KEY or GEMINI_API_KEY in Railway")
