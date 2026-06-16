@@ -1732,6 +1732,7 @@ Fields to extract:
   "vat_rent": float — VAT on rent as decimal (default 0.01 per Law 157/2025),
   "vat_sc": float — VAT on SC as decimal (default 0.14),
   "revenue_share_years": integer — number of Revenue Share years at start (default 0),
+  "marketing_rate": float or null — marketing charges as decimal (e.g. 0.05 for 5% of annual rent), null if not mentioned,
   "notes": "string — any important notes or assumptions made"
 }
 
@@ -1875,11 +1876,13 @@ async def generate_annex(data: dict, current_user=Depends(require_editor)):
             "vat_rent":             float(data.get("vat_rent", 0.01)),
             "vat_sc":               float(data.get("vat_sc", 0.14)),
             "revenue_share_years":  int(data.get("revenue_share_years", 0)),
+            "marketing_rate":       float(data.get("marketing_rate") or 0),
         }
 
         # Build Excel in memory
         import sys, os
-        sys.path.insert(0, "/app")
+        for path in ["/app", os.path.dirname(os.path.abspath(__file__)), "."]:
+    if path not in sys.path: sys.path.insert(0, path)
         from build_annex import build_annex
 
         tmp_path = f"/tmp/annex_{current_user['id']}_{int(__import__('time').time())}.xlsx"
