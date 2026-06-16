@@ -1737,7 +1737,6 @@ Fields to extract:
 
 Deal description:
 """ + text
-
 gemini_key = os.getenv("GEMINI_API_KEY", "")
     resp = httpx.post(
         f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}",
