@@ -1738,19 +1738,16 @@ Fields to extract:
 Deal description:
 """ + text
 
-    resp = httpx.post("https://api.anthropic.com/v1/messages",
-        headers={"x-api-key": os.getenv("ANTHROPIC_API_KEY",""),
-                 "anthropic-version": "2023-06-01",
-                 "content-type": "application/json"},
-        json={"model": "claude-sonnet-4-6",
-              "max_tokens": 1000,
-              "messages": [{"role": "user", "content": prompt}]},
-        timeout=30)
+   gemini_key = os.getenv("GEMINI_API_KEY", "")
+resp = httpx.post(
+    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}",
+    headers={"content-type": "application/json"},
+    json={"contents": [{"parts": [{"text": prompt}]}]},
+    timeout=30)
+if resp.status_code != 200:
+    raise HTTPException(500, f"AI error: {resp.text[:200]}")
 
-    if resp.status_code != 200:
-        raise HTTPException(500, f"AI error: {resp.text[:200]}")
-
-    content = resp.json()["content"][0]["text"].strip()
+content = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
     # Strip markdown code blocks if present
     if content.startswith("```"):
         content = content.split("```")[1]
