@@ -1155,7 +1155,7 @@ export default function Portal(){
               أدخل تفاصيل الصفقة
             </div>
             <textarea style={{...s.input,width:"100%",minHeight:160,resize:"vertical",fontSize:13,lineHeight:1.7,fontFamily:QB.fontFamily}}
-              placeholder={`مثال:
+              placeholder={"مثال:
 المستأجر: سيلانترو
 الوحدة: F-01
 المشروع: Giza Zoo Commercial Destination
@@ -1164,7 +1164,7 @@ export default function Portal(){
 إيجار شهري السنة الأولى: 150,000 جنيه
 تصاعد سنوي: 10%
 رسوم خدمات شهرية: 30,000 جنيه
-سنة Revenue Share: لا`}
+سنة Revenue Share: لا"}
               value={annexText} onChange={e=>setAnnexText(e.target.value)}/>
             <div style={{display:"flex",gap:8,marginTop:10}}>
               <button style={{...s.btnP,padding:"8px 20px"}} disabled={!annexText.trim()||annexLoading}
@@ -1199,6 +1199,7 @@ export default function Portal(){
               {key:"revenue_share_years",label:"عدد سنوات Revenue Share",type:"number"},
               {key:"vat_rent",label:"ضريبة القيمة المضافة على الإيجار",type:"percent"},
               {key:"vat_sc",label:"ضريبة القيمة المضافة على رسوم الخدمات",type:"percent"},
+              {key:"marketing_rate",label:"رسوم التسويق (% من الإيجار السنوي — اتركه 0 لو مش موجود)",type:"percent"},
             ];
             return(
               <div style={{...s.card,marginBottom:16}}>
