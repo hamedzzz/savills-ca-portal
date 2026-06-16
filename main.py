@@ -1743,27 +1743,47 @@ Deal description:
     openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
 
     if gemini_key:
-        # Using Gemini 2.0 Pro Exp (Current best Pro model)
-        model_id = "gemini-2.0-pro-exp-02-05" 
-        resp = httpx.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={gemini_key}",
-            headers={"Content-Type": "application/json"},
-            json={"contents": [{"parts": [{"text": prompt}]}],
-                  "generationConfig": {"maxOutputTokens": 2000, "temperature": 0.1}},
-            timeout=60)
-        if resp.status_code != 200:
-            # Fallback to 1.5 Pro if 2.0 is not available for this key yet
-            model_id = "gemini-1.5-pro"
-            resp = httpx.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={gemini_key}",
-                headers={"Content-Type": "application/json"},
-                json={"contents": [{"parts": [{"text": prompt}]}],
-                      "generationConfig": {"maxOutputTokens": 2000, "temperature": 0.1}},
-                timeout=60)
-            
-        if resp.status_code != 200:
-            raise HTTPException(500, f"Gemini API error: {resp.text[:200]}")
-        content = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+        # Attempting Gemini 2.0 Pro (Exp) first
+        # Note: In v1, some models might need specific naming or versioning
+        success = False
+        content = ""
+        
+        # List of models to try in order of preference
+        models_to_try = ["gemini-2.0-pro-exp-02-05", "gemini-1.5-pro", "gemini-1.5-pro-latest"]
+        
+        for model_id in models_to_try:
+            try:
+                # Try v1 first as it's more stable for GA models
+                api_url = f"https://generativelanguage.googleapis.com/v1/models/{model_id}:generateContent?key={gemini_key}"
+                resp = httpx.post(api_url,
+                    headers={"Content-Type": "application/json"},
+                    json={"contents": [{"parts": [{"text": prompt}]}],
+                          "generationConfig": {"maxOutputTokens": 2000, "temperature": 0.1}},
+                    timeout=60)
+                
+                if resp.status_code == 200:
+                    content = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    success = True
+                    break
+                
+                # If v1 fails, try v1beta
+                api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={gemini_key}"
+                resp = httpx.post(api_url,
+                    headers={"Content-Type": "application/json"},
+                    json={"contents": [{"parts": [{"text": prompt}]}],
+                          "generationConfig": {"maxOutputTokens": 2000, "temperature": 0.1}},
+                    timeout=60)
+                
+                if resp.status_code == 200:
+                    content = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    success = True
+                    break
+            except Exception as e:
+                print(f"Failed to call Gemini with model {model_id}: {str(e)}")
+                continue
+
+        if not success:
+            raise HTTPException(500, f"Gemini API error: All model attempts failed. Last error: {resp.text[:200] if 'resp' in locals() else 'Unknown'}")
 
     elif openrouter_key:
         resp = httpx.post("https://openrouter.ai/api/v1/chat/completions",
