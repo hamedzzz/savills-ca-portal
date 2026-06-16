@@ -1877,7 +1877,6 @@ async def generate_annex(data: dict, current_user=Depends(require_editor)):
             "vat_sc":               float(data.get("vat_sc", 0.14)),
             "revenue_share_years":  int(data.get("revenue_share_years", 0)),
             "marketing_rate":       float(data.get("marketing_rate") or 0),
-        }
 
         # Build Excel in memory
         import sys, os
