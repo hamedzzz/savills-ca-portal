@@ -1810,17 +1810,40 @@ Deal description:
 
     else:
         raise HTTPException(500, "No AI API key configured — set OPENROUTER_API_KEY or GEMINI_API_KEY in Railway")
-    # Strip markdown code blocks if present
-    if content.startswith("```"):
-        content = content.split("```")[1]
-        if content.startswith("json"):
-            content = content[4:]
+    # Robust cleaning of AI response
+    import re
     content = content.strip()
+    
+    # Remove markdown code blocks (```json ... ``` or ``` ... ```)
+    if "```" in content:
+        matches = re.findall(r'```(?:json)?\s*([\s\S]*?)\s*```', content)
+        if matches:
+            content = matches[0].strip()
+        else:
+            # Fallback: just strip lines with backticks
+            lines = content.splitlines()
+            content = "\n".join([l for l in lines if not l.strip().startswith("```")]).strip()
+
+    # Isolate JSON object by finding first '{' and last '}'
+    start = content.find('{')
+    end = content.rfind('}')
+    if start != -1 and end != -1 and end > start:
+        content = content[start:end+1]
 
     try:
+        # Standard parse
         extracted = json.loads(content)
     except Exception as e:
-        raise HTTPException(500, f"Could not parse AI response: {e}")
+        # If parsing fails, try to fix common JSON issues like unescaped newlines
+        try:
+            # This regex looks for strings in JSON and replaces actual newlines with \n
+            fixed_content = re.sub(r'(?<=: ")(.*?)(?=",|(?="\s*\}))', 
+                                   lambda m: m.group(1).replace('\n', '\\n').replace('\r', '\\r'), 
+                                   content, flags=re.DOTALL)
+            extracted = json.loads(fixed_content)
+        except:
+            # If all fails, provide the raw content for debugging
+            raise HTTPException(500, f"Could not parse AI response: {str(e)}\nContent: {content[:200]}")
 
     return {"ok": True, "data": extracted}
 
