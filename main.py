@@ -1732,118 +1732,53 @@ Fields to extract:
   "vat_rent": float — VAT on rent as decimal (default 0.01 per Law 157/2025),
   "vat_sc": float — VAT on SC as decimal (default 0.14),
   "revenue_share_years": integer — number of Revenue Share years at start (default 0),
+  "marketing_rate": float or null — marketing charges as decimal (e.g. 0.05 for 5% of annual rent), null if not mentioned,
   "notes": "string — any important notes or assumptions made"
 }
 
 Deal description:
 """ + text
 
-    # Prioritize Google Gemini Direct API (GEMINI_API_KEY)
-    gemini_key     = os.getenv("GEMINI_API_KEY", "")
+    # Supports OpenRouter (OPENROUTER_API_KEY) or Google Gemini (GEMINI_API_KEY)
     openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
+    gemini_key     = os.getenv("GEMINI_API_KEY", "")
 
-    if gemini_key:
-        success = False
-        content = ""
-        
-        # We'll try the most likely candidates directly first to save time
-        # Standard model IDs for Gemini 1.5 Pro and 2.0 Flash/Pro
-        candidates = [
-            "gemini-1.5-pro",
-            "gemini-2.0-flash-001",
-            "gemini-2.0-flash",
-            "gemini-1.5-flash"
-        ]
-        
-        for model_id in candidates:
-            # Try both v1 and v1beta
-            for ver in ["v1", "v1beta"]:
-                try:
-                    url = f"https://generativelanguage.googleapis.com/{ver}/models/{model_id}:generateContent?key={gemini_key}"
-                    resp = httpx.post(url, json={
-                        "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": {"maxOutputTokens": 2000, "temperature": 0.1}
-                    }, timeout=60)
-                    if resp.status_code == 200:
-                        content = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                        success = True
-                        break
-                except: continue
-            if success: break
-
-        if not success:
-            # Last ditch effort: Try to list models and find anything with 'gemini' and 'generateContent'
-            try:
-                list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={gemini_key}"
-                list_resp = httpx.get(list_url, timeout=10)
-                if list_resp.status_code == 200:
-                    available = list_resp.json().get("models", [])
-                    # Filter for models that support generateContent and have 'gemini' in name
-                    viable = [m["name"] for m in available if "generateContent" in m.get("supportedGenerationMethods", []) and "gemini" in m["name"].lower()]
-                    if viable:
-                        # Use the first viable model (usually Pro is listed before Flash, but we'll take what we can get)
-                        target = viable[0] # e.g. "models/gemini-1.5-flash"
-                        url = f"https://generativelanguage.googleapis.com/v1beta/{target}:generateContent?key={gemini_key}"
-                        resp = httpx.post(url, json={
-                            "contents": [{"parts": [{"text": prompt}]}],
-                            "generationConfig": {"maxOutputTokens": 2000, "temperature": 0.1}
-                        }, timeout=60)
-                        if resp.status_code == 200:
-                            content = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                            success = True
-            except: pass
-
-        if not success:
-            raise HTTPException(500, f"Gemini API error: No working models found for your API key. Please check your Google AI Studio billing/quota.")
-
-    elif openrouter_key:
+    if openrouter_key:
         resp = httpx.post("https://openrouter.ai/api/v1/chat/completions",
             headers={"Authorization": f"Bearer {openrouter_key}",
                      "Content-Type": "application/json"},
-            json={"model": "google/gemini-pro-1.5",
+            json={"model": "google/gemini-2.0-flash-001",
                   "max_tokens": 1000,
                   "messages": [{"role": "user", "content": prompt}]},
             timeout=30)
         if resp.status_code != 200:
-            raise HTTPException(500, f"OpenRouter AI error: {resp.text[:200]}")
+            raise HTTPException(500, f"AI error: {resp.text[:200]}")
         content = resp.json()["choices"][0]["message"]["content"].strip()
+
+    elif gemini_key:
+        resp = httpx.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={gemini_key}",
+            headers={"Content-Type": "application/json"},
+            json={"contents": [{"parts": [{"text": prompt}]}],
+                  "generationConfig": {"maxOutputTokens": 1000}},
+            timeout=30)
+        if resp.status_code != 200:
+            raise HTTPException(500, f"AI error: {resp.text[:200]}")
+        content = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
 
     else:
         raise HTTPException(500, "No AI API key configured — set OPENROUTER_API_KEY or GEMINI_API_KEY in Railway")
-    # Robust cleaning of AI response
-    import re
+    # Strip markdown code blocks if present
+    if content.startswith("```"):
+        content = content.split("```")[1]
+        if content.startswith("json"):
+            content = content[4:]
     content = content.strip()
-    
-    # Remove markdown code blocks (```json ... ``` or ``` ... ```)
-    if "```" in content:
-        matches = re.findall(r'```(?:json)?\s*([\s\S]*?)\s*```', content)
-        if matches:
-            content = matches[0].strip()
-        else:
-            # Fallback: just strip lines with backticks
-            lines = content.splitlines()
-            content = "\n".join([l for l in lines if not l.strip().startswith("```")]).strip()
-
-    # Isolate JSON object by finding first '{' and last '}'
-    start = content.find('{')
-    end = content.rfind('}')
-    if start != -1 and end != -1 and end > start:
-        content = content[start:end+1]
 
     try:
-        # Standard parse
         extracted = json.loads(content)
     except Exception as e:
-        # If parsing fails, try to fix common JSON issues like unescaped newlines
-        try:
-            # This regex looks for strings in JSON and replaces actual newlines with \n
-            fixed_content = re.sub(r'(?<=: ")(.*?)(?=",|(?="\s*\}))', 
-                                   lambda m: m.group(1).replace('\n', '\\n').replace('\r', '\\r'), 
-                                   content, flags=re.DOTALL)
-            extracted = json.loads(fixed_content)
-        except:
-            # If all fails, provide the raw content for debugging
-            raise HTTPException(500, f"Could not parse AI response: {str(e)}\nContent: {content[:200]}")
+        raise HTTPException(500, f"Could not parse AI response: {e}")
 
     return {"ok": True, "data": extracted}
 
@@ -1875,11 +1810,15 @@ async def generate_annex(data: dict, current_user=Depends(require_editor)):
             "vat_rent":             float(data.get("vat_rent", 0.01)),
             "vat_sc":               float(data.get("vat_sc", 0.14)),
             "revenue_share_years":  int(data.get("revenue_share_years", 0)),
+            "marketing_rate":       float(data.get("marketing_rate") or 0),
         }
 
         # Build Excel in memory
         import sys, os
-        sys.path.insert(0, "/app")
+        # Try multiple paths for Railway deployment
+        for path in ["/app", os.path.dirname(__file__), "."]:
+            if path not in sys.path:
+                sys.path.insert(0, path)
         from build_annex import build_annex
 
         tmp_path = f"/tmp/annex_{current_user['id']}_{int(__import__('time').time())}.xlsx"
