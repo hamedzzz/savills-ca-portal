@@ -157,18 +157,20 @@ def build_annex(data: dict, output_path: str):
             c.border = all_border()
         ws.row_dimensions[row].height = 28
 
+    _data_row_count = [0]
     def money_row(row, year_dict, cols):
-        """Write one data row. cols = list of values."""
+        """Write one data row with alternating row colors."""
+        _data_row_count[0] += 1
+        bg = LIGHT if _data_row_count[0] % 2 == 1 else MID_GRAY
         for j, val in enumerate(cols, 1):
             c = ws.cell(row, j)
             c.value  = val
-            c.font   = Font(name="Arial", size=9)
+            c.font   = Font(name="Arial", size=9, color="000000")
+            c.fill   = PatternFill("solid", fgColor=bg)
             c.border = all_border()
             c.alignment = Alignment(horizontal="right" if isinstance(val, float) else "center",
                                     vertical="center")
-            if isinstance(val, float):
-                c.number_format = '#,##0.00'
-            elif isinstance(val, str) and val.startswith("="):
+            if isinstance(val, (float, int)) and not isinstance(val, bool):
                 c.number_format = '#,##0.00'
         ws.row_dimensions[row].height = 18
 
