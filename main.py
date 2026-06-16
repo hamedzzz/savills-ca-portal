@@ -10,7 +10,7 @@ app = FastAPI()
 ALLOWED_ORIGINS = [
     "https://savills-ca-portal.vercel.app",
     "https://savills-ca-portal-git-main-ahmed-hamed-s-projects.vercel.app",
-    "http://localhost:5173",
+    "http://localhost:5173",  # local dev
 ]
 app.add_middleware(CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -140,6 +140,7 @@ def init_db():
         rent NUMERIC DEFAULT 0,
         sc NUMERIC DEFAULT 0
     )""")
+
     c.execute("""CREATE TABLE IF NOT EXISTS invoice_uploads (
         id SERIAL PRIMARY KEY,
         property_id INTEGER NOT NULL REFERENCES properties(id),
@@ -154,6 +155,7 @@ def init_db():
         invoiced_amount NUMERIC DEFAULT 0,
         not_invoiced_amount NUMERIC DEFAULT 0
     )""")
+
     c.execute("""CREATE TABLE IF NOT EXISTS invoice_lines (
         id SERIAL PRIMARY KEY,
         upload_id INTEGER NOT NULL REFERENCES invoice_uploads(id) ON DELETE CASCADE,
@@ -176,6 +178,7 @@ def init_db():
         lease_end DATE,
         document_status TEXT DEFAULT ''
     )""")
+
     c.execute("""CREATE TABLE IF NOT EXISTS recon_comments (
         id SERIAL PRIMARY KEY,
         line_id INTEGER NOT NULL REFERENCES invoice_lines(id) ON DELETE CASCADE,
@@ -188,6 +191,7 @@ def init_db():
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
     )""")
+
     c.execute("""CREATE TABLE IF NOT EXISTS sop_documents (
         id SERIAL PRIMARY KEY,
         filename TEXT NOT NULL,
@@ -199,6 +203,7 @@ def init_db():
         upload_date TIMESTAMP DEFAULT NOW(),
         is_active BOOLEAN DEFAULT TRUE
     )""")
+
     c.execute("""CREATE TABLE IF NOT EXISTS portal_guide (
         id SERIAL PRIMARY KEY,
         section TEXT NOT NULL UNIQUE,
@@ -210,6 +215,7 @@ def init_db():
         updated_at TIMESTAMP DEFAULT NOW()
     )""")
     safe_exec(c, conn, "ALTER TABLE portal_guide ADD CONSTRAINT IF NOT EXISTS portal_guide_section_unique UNIQUE (section)")
+
     c.execute("""CREATE TABLE IF NOT EXISTS customers (
         id SERIAL PRIMARY KEY,
         brand_name TEXT NOT NULL,
@@ -229,6 +235,7 @@ def init_db():
         updated_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(brand_name, unit_code)
     )""")
+
     c.execute("""CREATE TABLE IF NOT EXISTS edit_requests (
         id SERIAL PRIMARY KEY,
         requested_by INTEGER NOT NULL REFERENCES ca_users(id),
@@ -272,8 +279,8 @@ def init_db():
     safe_exec(c, conn, "ALTER TABLE rent_roll_uploads ADD COLUMN IF NOT EXISTS sub_location TEXT DEFAULT ''")
     safe_exec(c, conn, "ALTER TABLE rent_roll_leases ADD COLUMN IF NOT EXISTS document_type TEXT DEFAULT ''")
     safe_exec(c, conn, "ALTER TABLE rent_roll_leases ADD COLUMN IF NOT EXISTS tenant_number TEXT DEFAULT ''")
-    safe_exec(c, conn, "CREATE INDEX IF NOT EXISTS idx_rrm_lease_month ON rent_roll_monthly(lease_id, month)")
-    safe_exec(c, conn, "CREATE INDEX IF NOT EXISTS idx_rrm_upload_month ON rent_roll_monthly(upload_id, month)")
+    safe_exec(c, conn, """CREATE INDEX IF NOT EXISTS idx_rrm_lease_month ON rent_roll_monthly(lease_id, month)""")
+    safe_exec(c, conn, """CREATE INDEX IF NOT EXISTS idx_rrm_upload_month ON rent_roll_monthly(upload_id, month)""")
     safe_exec(c, conn, "ALTER TABLE invoice_uploads ADD COLUMN IF NOT EXISTS report_month TEXT DEFAULT ''")
     safe_exec(c, conn, """CREATE TABLE IF NOT EXISTS otp_sessions (
         id SERIAL PRIMARY KEY,
@@ -284,13 +291,14 @@ def init_db():
         created_at TIMESTAMP DEFAULT NOW()
     )""")
     safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS tenant_number TEXT DEFAULT ''")
+    # Seed default How to use guide
     default_guide = [
-        ("getting-started", "Getting Started", "Welcome to the Savills Egypt CA Portal.", 1),
-        ("collection", "Collection Module", "Track rent collection data across all properties.", 2),
-        ("rent-roll", "Rent Roll", "View all active leases with filters.", 3),
-        ("invoice-recon", "Invoice Reconciliation", "Upload Oracle reports to reconcile invoiced vs not-invoiced leases.", 4),
-        ("reports", "Reports", "Access Power BI reports embedded in the portal.", 5),
-        ("kpis", "KPI Dashboard", "Collection performance and rent roll metrics.", 6),
+        ("getting-started", "Getting Started", "Welcome to the Savills Egypt CA Portal. This guide will help you navigate and use the portal effectively.", 1),
+        ("collection", "Collection Module", "The Collection module allows you to view and track rent collection data across all properties. Use the filters to narrow down by property and month.", 2),
+        ("rent-roll", "Rent Roll", "The Rent Roll section shows all active leases. You can filter by property, sub-location, unit type, and expiry date. Click any lease to view its full details including the payment schedule.", 3),
+        ("invoice-recon", "Invoice Reconciliation", "Upload the Oracle Lease Summary Report to reconcile invoiced vs not-invoiced leases for any month. Use the status filter to focus on not-invoiced items and add comments with reasons.", 4),
+        ("reports", "Reports", "Access Power BI reports embedded directly in the portal. Click any report card to open the full dashboard.", 5),
+        ("kpis", "KPI Dashboard", "The KPI Dashboard shows a summary of collection performance and rent roll metrics for all properties. Use the property selector to filter by property.", 6),
     ]
     for section, title, content, order in default_guide:
         safe_exec(c, conn, """INSERT INTO portal_guide (section, title, content, order_index, created_by)
@@ -299,6 +307,7 @@ def init_db():
     safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS document_type TEXT DEFAULT ''")
     safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS document_no TEXT DEFAULT ''")
     conn.commit()
+
     default_settings = [
         ("app_name", "Savills Egypt CA"),
         ("logo_url", "https://savills-ca-portal.vercel.app/savills-logo.svg"),
@@ -312,6 +321,7 @@ def init_db():
     for key, value in default_settings:
         safe_exec(c, conn, "INSERT INTO app_settings (key, value) VALUES (%s, %s) ON CONFLICT (key) DO NOTHING", (key, value))
     conn.commit()
+
     try:
         hashed = bcrypt.hashpw("123456".encode(), bcrypt.gensalt()).decode()
         c.execute("""INSERT INTO ca_users (username,full_name,email,title,hashed_password,role)
@@ -325,6 +335,7 @@ def init_db():
     except Exception as e:
         conn.rollback()
         print(f"[init_db] seed skipped: {e}")
+
     conn.close()
     print("✅ CA Portal DB v3 initialized")
 
@@ -365,13 +376,15 @@ def send_otp_email(to_email: str, to_name: str, otp: str) -> bool:
         resp = httpx.post(
             "https://api.sendgrid.com/v3/mail/send",
             headers={"Authorization": f"Bearer {SENDGRID_API_KEY}", "Content-Type": "application/json"},
-            json=payload, timeout=10)
-        if resp.status_code == 202: return True
+            json=payload,
+            timeout=10
+        )
+        if resp.status_code == 202:
+            return True
         print(f"SendGrid error {resp.status_code}: {resp.text}")
         return False
     except Exception as e:
         print(f"OTP email error: {e}"); return False
-
 def verify_password(p, h): return bcrypt.checkpw(p.encode(), h.encode())
 def create_token(data): return jwt.encode({**data, "exp": datetime.utcnow()+timedelta(days=7)}, SECRET_KEY, algorithm="HS256")
 
@@ -443,20 +456,29 @@ def login(data: LoginData):
     user = c.fetchone()
     if not user or not verify_password(data.password, user["hashed_password"]):
         conn.close(); raise HTTPException(401, "Invalid credentials")
+
+    # Check if user has email for OTP
     if user.get("email"):
+        # Generate OTP
         otp = generate_otp()
         expires = datetime.utcnow() + timedelta(minutes=10)
+        # Clean old OTPs for this user
         c.execute("DELETE FROM otp_sessions WHERE user_id=%s", (user["id"],))
-        c.execute("INSERT INTO otp_sessions (user_id, otp_code, expires_at) VALUES (%s,%s,%s)", (user["id"], otp, expires))
+        c.execute("INSERT INTO otp_sessions (user_id, otp_code, expires_at) VALUES (%s,%s,%s)",
+                  (user["id"], otp, expires))
         conn.commit()
+        # Send OTP email
         sent = send_otp_email(user["email"], user["full_name"], otp)
         conn.close()
         resp = {"otp_required": True, "user_id": user["id"],
                 "message": f"OTP sent to {user['email'][:3]}***@{user['email'].split('@')[1]}"}
+        # If SendGrid not configured, return OTP directly for testing
         if not sent:
             resp["dev_otp"] = otp
             resp["message"] = "Email not configured — use dev_otp field"
         return resp
+
+    # No email — direct login (fallback)
     log_activity(conn, user["id"], "login", "auth", user["username"])
     conn.commit(); conn.close()
     token = create_token({"id": user["id"], "username": user["username"], "role": user["role"]})
@@ -467,16 +489,23 @@ def verify_otp(data: dict):
     user_id = data.get("user_id")
     otp_code = data.get("otp_code","").strip()
     conn = get_db(); c = conn.cursor()
+
     c.execute("""SELECT * FROM otp_sessions
                  WHERE user_id=%s AND used=FALSE AND expires_at > NOW()
                  ORDER BY created_at DESC LIMIT 1""", (user_id,))
     session = c.fetchone()
+
     if not session or session["otp_code"] != otp_code:
         conn.close(); raise HTTPException(401, "Invalid or expired OTP")
+
+    # Mark OTP as used
     c.execute("UPDATE otp_sessions SET used=TRUE WHERE id=%s", (session["id"],))
+
+    # Get user
     c.execute("SELECT * FROM ca_users WHERE id=%s AND is_active=TRUE", (user_id,))
     user = c.fetchone()
     if not user: conn.close(); raise HTTPException(401, "User not found")
+
     log_activity(conn, user["id"], "login", "auth", user["username"])
     conn.commit(); conn.close()
     token = create_token({"id": user["id"], "username": user["username"], "role": user["role"]})
@@ -931,32 +960,45 @@ async def upload_rent_roll(property_id: int = Form(...), sub_location: str = For
              lease_start, lease_end, float(gv('Remaining Years',0)), float(gv('Remaining Months',0)),
              float(gv('Annualized Rent',0)), ann_sc, monthly, float(gv('Indoor Rent Per Sqm',0)), sc_sqm,
              float(gv('Rent Escalation Rate',0)), float(gv('Revenue Sharing Rate',0)), float(gv('Security Deposit',0))))
+    # After inserting all leases, fetch their IDs and save monthly data
     c.execute("SELECT id, document_no FROM rent_roll_leases WHERE upload_id=%s", (upload_id,))
     lease_id_map = {row["document_no"]: row["id"] for row in c.fetchall()}
+
+    # Get all month columns from the file (format: YYYY-MM)
     month_cols = sorted([col for col in df.columns if str(col).startswith('20') and len(str(col))==7])
+
+    # Build monthly inserts for rent + SC
     monthly_rows = []
     for _, row in rent.iterrows():
         doc_no = str(row.get('Document No',''))
         lease_id = lease_id_map.get(doc_no)
-        if not lease_id: continue
+        if not lease_id:
+            continue
+        # Find matching SC row
         sc_row = sc_df[sc_df['Document No']==row.get('Document No','')]
         for mc in month_cols:
-            r_val = 0.0; s_val = 0.0
+            r_val = 0.0
+            s_val = 0.0
             try:
                 rv = row.get(mc)
-                if rv is not None and not pd.isna(rv): r_val = float(rv)
+                if rv is not None and not pd.isna(rv):
+                    r_val = float(rv)
             except: pass
             try:
                 if len(sc_row)>0:
                     sv = sc_row.iloc[0].get(mc)
-                    if sv is not None and not pd.isna(sv): s_val = float(sv)
+                    if sv is not None and not pd.isna(sv):
+                        s_val = float(sv)
             except: pass
             if r_val > 0 or s_val > 0:
                 monthly_rows.append((lease_id, upload_id, property_id, mc, r_val, s_val))
+
+    # Batch insert monthly data
     if monthly_rows:
         psycopg2.extras.execute_values(c,
             "INSERT INTO rent_roll_monthly (lease_id, upload_id, property_id, month, rent, sc) VALUES %s",
             monthly_rows)
+
     log_activity(conn, current_user["id"], "uploaded rent roll", "property", str(property_id), f"leases={summary['active_leases']} month={report_month}")
     conn.commit(); conn.close()
     return {"ok": True, "upload_id": upload_id, "sub_location": sub_location, **summary}
@@ -970,6 +1012,7 @@ def get_rent_roll(property_id: int, current_user=Depends(get_current_user)):
 @app.get("/rent-roll/{property_id}/leases")
 def get_rent_roll_leases(property_id: int, current_user=Depends(get_current_user)):
     conn = get_db(); c = conn.cursor()
+    # KEY FIX: include u.sub_location so frontend can filter by sub-location
     c.execute("""SELECT l.*, u.sub_location FROM rent_roll_leases l
                  JOIN rent_roll_uploads u ON l.upload_id=u.id
                  WHERE l.property_id=%s
@@ -986,6 +1029,7 @@ def get_all_rent_rolls(current_user=Depends(get_current_user)):
 
 @app.get("/rent-roll/{property_id}/monthly")
 def get_rent_roll_monthly(property_id: int, month: str, current_user=Depends(get_current_user)):
+    """Get monthly rent + SC for all leases in a property for a specific month"""
     conn = get_db(); c = conn.cursor()
     c.execute("""
         SELECT m.lease_id, m.month, m.rent, m.sc,
@@ -999,14 +1043,20 @@ def get_rent_roll_monthly(property_id: int, month: str, current_user=Depends(get
         ORDER BY u.sub_location, l.remaining_years ASC
     """, (property_id, month))
     rows = [dict(r) for r in c.fetchall()]
-    conn.close(); return rows
+    conn.close()
+    return rows
 
 @app.get("/rent-roll/{property_id}/months")
 def get_rent_roll_months(property_id: int, current_user=Depends(get_current_user)):
+    """Get list of available months for a property's rent roll"""
     conn = get_db(); c = conn.cursor()
-    c.execute("SELECT DISTINCT month FROM rent_roll_monthly WHERE property_id=%s ORDER BY month", (property_id,))
+    c.execute("""
+        SELECT DISTINCT month FROM rent_roll_monthly
+        WHERE property_id=%s ORDER BY month
+    """, (property_id,))
     rows = [r["month"] for r in c.fetchall()]
-    conn.close(); return rows
+    conn.close()
+    return rows
 
 # ── Invoice Reconciliation ────────────────────────────────────────────────────
 @app.post("/invoice-recon/upload")
@@ -1019,40 +1069,68 @@ async def upload_invoice_recon(
 ):
     import pandas as pd
     content = await file.read()
+
+    # Find header row
     df_raw = pd.read_excel(io.BytesIO(content), header=None)
     header_row = 2
     for i, row in df_raw.iterrows():
         if any('Document No' in str(v) for v in row.values):
-            header_row = i; break
+            header_row = i
+            break
+
     df = pd.read_excel(io.BytesIO(content), header=header_row)
     df.columns = [str(c).strip() for c in df.columns]
+
+    # Filter: Approved leases, relevant element groups, target month
     if 'Document Status' in df.columns:
         df = df[df['Document Status'].isin(['Approved','Active'])]
+
+    # Parse dates
     if 'PS Due Date' in df.columns:
         df['PS Due Date'] = pd.to_datetime(df['PS Due Date'], errors='coerce')
+
+    # Filter element groups
     relevant = ['Rent','Service Charge']
     if 'Element Group' in df.columns:
         df = df[df['Element Group'].isin(relevant)]
+
     if len(df) == 0:
         raise HTTPException(400, "No matching records found")
+
+    # Auto-detect sub_location from Project column BEFORE filtering
     if not sub_location and 'Project' in df.columns:
         projs = df['Project'].dropna().unique()
         projs = [p for p in projs if str(p).strip().lower() not in ('total','nan','none')]
-        if len(projs) == 1: sub_location = str(projs[0]).strip()
+        if len(projs) == 1:
+            sub_location = str(projs[0]).strip()
+
     def safe_float(v):
         try: return float(v) if pd.notna(v) else 0.0
         except: return 0.0
+
     def safe_str(v):
         s = str(v).strip() if pd.notna(v) else ''
         return '' if s.lower() in ('nan','none','nat') else s
+
     def safe_date(v):
         if pd.isna(v): return None
         try: return pd.to_datetime(v).date()
         except: return None
+
+    # Auto-detect sub_location from Project column
+    if not sub_location and 'Project' in df.columns:
+        projs = df['Project'].dropna().unique()
+        projs = [p for p in projs if str(p).strip().lower() != 'total']
+        if len(projs) == 1:
+            sub_location = str(projs[0]).strip()
+
+    # Filter for target month for summary KPIs
     target = pd.to_datetime(report_month + '-01')
     month_df = df[df['PS Due Date'].dt.to_period('M') == target.to_period('M')] if 'PS Due Date' in df.columns else df
+
     invoiced_m = month_df[month_df['PS Invoiced Flag']=='Y']
     not_invoiced_m = month_df[month_df['PS Invoiced Flag']=='N']
+
     summary = {
         'total_lines': len(month_df),
         'invoiced_count': len(invoiced_m),
@@ -1060,9 +1138,14 @@ async def upload_invoice_recon(
         'invoiced_amount': float(invoiced_m['PS Amount'].fillna(0).sum()),
         'not_invoiced_amount': float(not_invoiced_m['PS Amount'].fillna(0).sum()),
     }
+
     conn = get_db(); c = conn.cursor()
-    c.execute("DELETE FROM invoice_uploads WHERE property_id=%s AND sub_location=%s AND report_month=%s",
+
+    # Delete previous upload for same property+sub_location+month
+    c.execute("""DELETE FROM invoice_uploads
+                 WHERE property_id=%s AND sub_location=%s AND report_month=%s""",
               (property_id, sub_location, report_month))
+
     c.execute("""INSERT INTO invoice_uploads
         (property_id,sub_location,filename,uploaded_by,report_month,
          total_lines,invoiced_count,not_invoiced_count,invoiced_amount,not_invoiced_amount)
@@ -1071,11 +1154,15 @@ async def upload_invoice_recon(
          summary['total_lines'], summary['invoiced_count'], summary['not_invoiced_count'],
          summary['invoiced_amount'], summary['not_invoiced_amount']))
     upload_id = c.fetchone()["id"]
+
+    # Store all rows (YTD) using batch insert
     rows_data = []
     for _, row in df.iterrows():
         due = safe_date(row.get('PS Due Date'))
+        # Get row-level sub_location from Project column
         row_sub = safe_str(row.get('Project', sub_location)) or sub_location
         if row_sub.lower() in ('nan','none',''): row_sub = sub_location
+        # PS Amount is the invoice amount (PS Revenue Amount is always 0)
         rows_data.append((
             upload_id, property_id, row_sub, report_month,
             safe_str(row.get('Document No','')), safe_str(row.get('Unit','')),
@@ -1093,6 +1180,7 @@ async def upload_invoice_recon(
              customer_name,brand,element_group,ps_due_date,ps_amount,ps_paid_amount,
              ps_invoiced_flag,ps_revenue_amount,invoice_no,lease_start,lease_end,document_status)
            VALUES %s""", rows_data)
+
     log_activity(conn, current_user["id"], "uploaded invoice recon", "invoice",
                  f"{sub_location} {report_month}",
                  f"lines={summary['total_lines']} invoiced={summary['invoiced_count']}")
@@ -1154,9 +1242,13 @@ def get_invoice_months(property_id: int = None, current_user=Depends(get_current
 def save_recon_comment(data: dict, current_user=Depends(require_editor)):
     conn = get_db(); c = conn.cursor()
     line_id = data["line_id"]
+
+    # Get line info
     c.execute("SELECT property_id, report_month FROM invoice_lines WHERE id=%s", (line_id,))
     line = c.fetchone()
     if not line: conn.close(); raise HTTPException(404, "Line not found")
+
+    # Upsert comment
     c.execute("SELECT id FROM recon_comments WHERE line_id=%s", (line_id,))
     existing = c.fetchone()
     if existing:
@@ -1171,6 +1263,7 @@ def save_recon_comment(data: dict, current_user=Depends(require_editor)):
                   (line_id, line["property_id"], line["report_month"],
                    data.get("reason",""), data.get("notes",""),
                    data.get("status","open"), current_user["id"]))
+
     log_activity(conn, current_user["id"], "added recon comment", "invoice",
                  data.get("reason",""), f"line_id={line_id}")
     conn.commit(); conn.close()
@@ -1180,7 +1273,10 @@ def save_recon_comment(data: dict, current_user=Depends(require_editor)):
 def get_invoice_summary(property_id: int, report_month: str = None,
                         sub_location: str = None,
                         current_user=Depends(get_current_user)):
+    """Calculate summary from actual lines filtered by month"""
     conn = get_db(); c = conn.cursor()
+
+    # Current month — aggregate from lines
     c.execute("""
         SELECT
             COUNT(*) as total_lines,
@@ -1205,6 +1301,8 @@ def get_invoice_summary(property_id: int, report_month: str = None,
         "invoiced_amount": float(row["invoiced_amount"] or 0),
         "not_invoiced_amount": float(row["not_invoiced_amount"] or 0),
     }]
+
+    # Previous month for delta
     prev_month = (datetime.strptime(report_month+"-01", "%Y-%m-%d")
                   .replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
     c.execute("""
@@ -1226,12 +1324,14 @@ def get_invoice_summary(property_id: int, report_month: str = None,
     else:
         current[0]["delta_invoiced"] = None
         current[0]["delta_not_invoiced"] = None
+
     conn.close()
     return current
 
 # ── Customers ─────────────────────────────────────────────────────────────────
 @app.get("/customers")
-def list_customers(search: str = None, property_id: int = None, current_user=Depends(get_current_user)):
+def list_customers(search: str = None, property_id: int = None,
+                   current_user=Depends(get_current_user)):
     conn = get_db(); c = conn.cursor()
     q = """SELECT c.*, p.name as property_name FROM customers c
            LEFT JOIN properties p ON c.property_id=p.id WHERE 1=1"""
@@ -1261,7 +1361,9 @@ def create_customer(data: dict, current_user=Depends(require_editor)):
     brand = data.get("brand_name","").strip()
     unit = data.get("unit_code","").strip()
     if not brand: raise HTTPException(400, "Brand name required")
-    c.execute("SELECT id FROM customers WHERE brand_name ILIKE %s AND unit_code ILIKE %s", (brand, unit))
+    # Check duplicate
+    c.execute("SELECT id FROM customers WHERE brand_name ILIKE %s AND unit_code ILIKE %s",
+              (brand, unit))
     if c.fetchone():
         conn.close(); raise HTTPException(409, f"Customer '{brand}' with unit '{unit}' already exists")
     c.execute("""INSERT INTO customers
@@ -1309,14 +1411,18 @@ def delete_customer(customer_id: int, admin=Depends(require_admin)):
     conn.commit(); conn.close(); return {"ok": True}
 
 @app.post("/customers/import")
-async def import_customers(file: UploadFile = File(...), property_id: int = Form(default=None),
+async def import_customers(file: UploadFile = File(...),
+                           property_id: int = Form(default=None),
                            current_user=Depends(require_editor)):
+    """Import customers from Excel — skips duplicates"""
     import pandas as pd
     content = await file.read()
     try:
         df = pd.read_excel(io.BytesIO(content))
     except Exception as e:
         raise HTTPException(400, f"Cannot read file: {e}")
+
+    # Flexible column mapping
     col_map = {
         "brand_name": ["Brand","Brand Name","brand_name","Tenant Brand","Tenant Brand Name"],
         "legal_name": ["Customer Name","Legal Name","legal_name","Tenant Legal Name","Tenant Legal"],
@@ -1325,31 +1431,43 @@ async def import_customers(file: UploadFile = File(...), property_id: int = Form
         "location":   ["Location","Sub Location","location","sub_location"],
         "bank_account": ["Remittance Bank Account","Bank Account","bank_account"],
     }
+
     def find_col(df, candidates):
         for c in candidates:
             if c in df.columns: return c
         return None
+
     mapped = {}
     for field, candidates in col_map.items():
         col = find_col(df, candidates)
         if col: mapped[field] = col
+
     if "brand_name" not in mapped:
         raise HTTPException(400, "Cannot find Brand Name column")
+
     conn = get_db(); c = conn.cursor()
     added = 0; skipped = 0; errors = []
+
     for _, row in df.iterrows():
         brand = str(row.get(mapped["brand_name"], "")).strip()
         if not brand or brand.lower() in ("nan","none",""): continue
         unit = str(row.get(mapped.get("unit_code",""), "")).strip() if "unit_code" in mapped else ""
         if unit.lower() == "nan": unit = ""
-        c.execute("SELECT id FROM customers WHERE brand_name ILIKE %s AND unit_code ILIKE %s", (brand, unit))
+
+        # Check duplicate
+        c.execute("SELECT id FROM customers WHERE brand_name ILIKE %s AND unit_code ILIKE %s",
+                  (brand, unit))
         if c.fetchone():
             skipped += 1; continue
+
         try:
             legal = str(row.get(mapped.get("legal_name",""), "")).strip() if "legal_name" in mapped else ""
             utype = str(row.get(mapped.get("unit_type",""), "")).strip() if "unit_type" in mapped else ""
             loc   = str(row.get(mapped.get("location",""), "")).strip() if "location" in mapped else ""
             bank  = str(row.get(mapped.get("bank_account",""), "")).strip() if "bank_account" in mapped else ""
+            for v in [legal, utype, loc, bank]:
+                if v.lower() == "nan": v = ""
+
             c.execute("""INSERT INTO customers
                 (brand_name,legal_name,unit_code,unit_type,location,property_id,bank_account,source)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
@@ -1360,6 +1478,7 @@ async def import_customers(file: UploadFile = File(...), property_id: int = Form
             added += 1
         except Exception as e:
             skipped += 1; errors.append(str(e)[:100])
+
     log_activity(conn, current_user["id"], "imported customers", "customer",
                  file.filename, f"added={added} skipped={skipped}")
     conn.commit(); conn.close()
@@ -1368,6 +1487,7 @@ async def import_customers(file: UploadFile = File(...), property_id: int = Form
 @app.post("/customers/import-from-rent-roll")
 def import_from_rent_roll(property_id: int = None, data: dict = None, current_user=Depends(require_editor)):
     if data and "property_id" in data: property_id = data["property_id"]
+    """Pull customers from rent roll — insert new, update existing with missing fields"""
     conn = get_db(); c = conn.cursor()
     c.execute("""SELECT DISTINCT ON (l.tenant_brand, l.unit_code)
                  l.tenant_brand, l.tenant_legal, l.unit_code, l.unit_type,
@@ -1379,35 +1499,52 @@ def import_from_rent_roll(property_id: int = None, data: dict = None, current_us
                  ORDER BY l.tenant_brand, l.unit_code, u.upload_date DESC""", (property_id,))
     leases = c.fetchall()
     added = 0; updated = 0; skipped = 0
+
     for l in leases:
         brand = (l["tenant_brand"] or "").strip()
         unit  = (l["unit_code"] or "").strip()
         if not brand: continue
+
         doc_no    = (l["document_no"] or "").strip()
         legal     = (l["tenant_legal"] or "").strip()
         unit_type = (l["unit_type"] or "").strip()
         sub_loc   = (l["sub_location"] or "").strip()
         prop_id   = l["property_id"]
+
+        # Check if exists
         c.execute("""SELECT id, legal_name, document_no, document_type, tenant_number, unit_type, sub_location, property_id
-                     FROM customers WHERE brand_name ILIKE %s AND unit_code ILIKE %s""", (brand, unit))
+                     FROM customers WHERE brand_name ILIKE %s AND unit_code ILIKE %s""",
+                  (brand, unit))
         existing = c.fetchone()
+
         if existing:
+            # Build update: only fill in fields that are currently empty
             updates = {}
-            if not existing["legal_name"] and legal: updates["legal_name"] = legal
-            if not existing["document_no"] and doc_no: updates["document_no"] = doc_no
-            if not existing.get("document_type") and l.get("document_type"): updates["document_type"] = l["document_type"]
-            if not existing.get("tenant_number") and l.get("tenant_number"): updates["tenant_number"] = str(l["tenant_number"])
-            if not existing["unit_type"] and unit_type: updates["unit_type"] = unit_type
-            if not existing["sub_location"] and sub_loc: updates["sub_location"] = sub_loc
-            if not existing["property_id"] and prop_id: updates["property_id"] = prop_id
+            if not existing["legal_name"] and legal:
+                updates["legal_name"] = legal
+            if not existing["document_no"] and doc_no:
+                updates["document_no"] = doc_no
+            if not existing.get("document_type") and l.get("document_type"):
+                updates["document_type"] = l["document_type"]
+            if not existing.get("tenant_number") and l.get("tenant_number"):
+                updates["tenant_number"] = str(l["tenant_number"])
+            if not existing["unit_type"] and unit_type:
+                updates["unit_type"] = unit_type
+            if not existing["sub_location"] and sub_loc:
+                updates["sub_location"] = sub_loc
+            if not existing["property_id"] and prop_id:
+                updates["property_id"] = prop_id
+
             if updates:
                 updates["updated_at"] = datetime.utcnow()
                 set_clause = ", ".join(f"{k}=%s" for k in updates)
-                c.execute(f"UPDATE customers SET {set_clause} WHERE id=%s", (*updates.values(), existing["id"]))
+                c.execute(f"UPDATE customers SET {set_clause} WHERE id=%s",
+                         (*updates.values(), existing["id"]))
                 updated += 1
             else:
                 skipped += 1
         else:
+            # Insert new
             c.execute("""INSERT INTO customers
                 (brand_name,legal_name,unit_code,unit_type,sub_location,property_id,
                  document_no,document_type,tenant_number,source)
@@ -1415,6 +1552,7 @@ def import_from_rent_roll(property_id: int = None, data: dict = None, current_us
                 (brand, legal, unit, unit_type, sub_loc, prop_id, doc_no,
                  l.get("document_type") or "", str(l.get("tenant_number") or ""), "rent_roll"))
             added += 1
+
     log_activity(conn, current_user["id"], "imported from rent roll", "customer",
                  str(property_id), f"added={added} updated={updated} skipped={skipped}")
     conn.commit(); conn.close()
@@ -1422,6 +1560,7 @@ def import_from_rent_roll(property_id: int = None, data: dict = None, current_us
 
 @app.get("/rent-roll/{property_id}/history")
 def get_rent_roll_history(property_id: int, current_user=Depends(get_current_user)):
+    """Full upload history for a property with change deltas"""
     conn = get_db(); c = conn.cursor()
     c.execute("""
         SELECT u.*, usr.full_name as uploaded_by_name
@@ -1431,36 +1570,48 @@ def get_rent_roll_history(property_id: int, current_user=Depends(get_current_use
         ORDER BY u.sub_location, u.upload_date DESC
     """, (property_id,))
     rows = [dict(r) for r in c.fetchall()]
+
+    # Group by sub_location and compute deltas
     from collections import defaultdict
     by_sub = defaultdict(list)
     for r in rows:
         by_sub[r["sub_location"]].append(r)
+
     result = []
     for sub, uploads in by_sub.items():
         for i, upload in enumerate(uploads):
             prev = uploads[i+1] if i+1 < len(uploads) else None
             entry = {
-                "id": upload["id"], "sub_location": upload["sub_location"],
-                "filename": upload["filename"], "report_date": upload["report_date"],
+                "id": upload["id"],
+                "sub_location": upload["sub_location"],
+                "filename": upload["filename"],
+                "report_date": upload["report_date"],
                 "upload_date": upload["upload_date"].isoformat() if upload["upload_date"] else None,
                 "uploaded_by_name": upload["uploaded_by_name"],
-                "active_leases": upload["active_leases"], "unique_tenants": upload["unique_tenants"],
+                "active_leases": upload["active_leases"],
+                "unique_tenants": upload["unique_tenants"],
                 "total_gla": float(upload["total_gla"] or 0),
                 "annualized_rent": float(upload["annualized_rent"] or 0),
                 "monthly_rent": float(upload["monthly_rent"] or 0),
                 "monthly_sc": float(upload["monthly_sc"] or 0),
-                "expiry_0_1yr": upload["expiry_0_1yr"], "is_latest": i == 0,
+                "expiry_0_1yr": upload["expiry_0_1yr"],
+                "is_latest": i == 0,
+                # Deltas vs previous upload
                 "delta_leases": upload["active_leases"] - prev["active_leases"] if prev else None,
                 "delta_gla": float(upload["total_gla"] or 0) - float(prev["total_gla"] or 0) if prev else None,
                 "delta_rent": float(upload["annualized_rent"] or 0) - float(prev["annualized_rent"] or 0) if prev else None,
             }
             result.append(entry)
+
+    # Sort: latest first overall
     result.sort(key=lambda x: x["upload_date"] or "", reverse=True)
     conn.close()
     return result
 
 @app.get("/invoice-recon/available-months")
-def get_available_months(property_id: int, sub_location: str = None, current_user=Depends(get_current_user)):
+def get_available_months(property_id: int, sub_location: str = None,
+                         current_user=Depends(get_current_user)):
+    """Get distinct months available in invoice lines for a property"""
     conn = get_db(); c = conn.cursor()
     q = """SELECT DISTINCT TO_CHAR(DATE_TRUNC('month', ps_due_date), 'YYYY-MM') as month
            FROM invoice_lines
@@ -1533,7 +1684,8 @@ def create_guide_section(data: dict, admin=Depends(require_admin)):
     conn = get_db(); c = conn.cursor()
     c.execute("""INSERT INTO portal_guide (section,title,content,order_index,created_by)
                  VALUES (%s,%s,%s,%s,%s) RETURNING id""",
-              (data["section"], data["title"], data["content"], data.get("order_index",99), admin["id"]))
+              (data["section"], data["title"], data["content"],
+               data.get("order_index",99), admin["id"]))
     new_id = c.fetchone()["id"]
     conn.commit(); conn.close(); return {"id": new_id}
 
@@ -1556,7 +1708,7 @@ def delete_guide_section(guide_id: int, admin=Depends(require_admin)):
 # ── Financial Annex ───────────────────────────────────────────────────────────
 @app.post("/annex/extract")
 async def extract_annex_data(data: dict, current_user=Depends(require_editor)):
-    """Use Gemini to extract deal data from free-text input"""
+    """Use Claude to extract deal data from free-text input"""
     text = data.get("text", "").strip()
     if not text:
         raise HTTPException(400, "No text provided")
@@ -1586,17 +1738,36 @@ Fields to extract:
 Deal description:
 """ + text
 
-    gemini_key = os.getenv("GEMINI_API_KEY", "")
-    resp = httpx.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}",
-        headers={"content-type": "application/json"},
-        json={"contents": [{"parts": [{"text": prompt}]}]},
-        timeout=30)
+    # Supports OpenRouter (OPENROUTER_API_KEY) or Google Gemini (GEMINI_API_KEY)
+    openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
+    gemini_key     = os.getenv("GEMINI_API_KEY", "")
 
-    if resp.status_code != 200:
-        raise HTTPException(500, f"AI error: {resp.text[:200]}")
+    if openrouter_key:
+        resp = httpx.post("https://openrouter.ai/api/v1/chat/completions",
+            headers={"Authorization": f"Bearer {openrouter_key}",
+                     "Content-Type": "application/json"},
+            json={"model": "google/gemini-pro",
+                  "max_tokens": 1000,
+                  "messages": [{"role": "user", "content": prompt}]},
+            timeout=30)
+        if resp.status_code != 200:
+            raise HTTPException(500, f"AI error: {resp.text[:200]}")
+        content = resp.json()["choices"][0]["message"]["content"].strip()
 
-    content = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    elif gemini_key:
+        resp = httpx.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={gemini_key}",
+            headers={"Content-Type": "application/json"},
+            json={"contents": [{"parts": [{"text": prompt}]}],
+                  "generationConfig": {"maxOutputTokens": 1000}},
+            timeout=30)
+        if resp.status_code != 200:
+            raise HTTPException(500, f"AI error: {resp.text[:200]}")
+        content = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+
+    else:
+        raise HTTPException(500, "No AI API key configured — set OPENROUTER_API_KEY or GEMINI_API_KEY in Railway")
+    # Strip markdown code blocks if present
     if content.startswith("```"):
         content = content.split("```")[1]
         if content.startswith("json"):
@@ -1615,10 +1786,12 @@ Deal description:
 async def generate_annex(data: dict, current_user=Depends(require_editor)):
     """Generate Excel financial annex from structured data"""
     from datetime import date as dt_date
+    import base64, io
 
     try:
         lease_start_str = data.get("lease_start", "")
         if isinstance(lease_start_str, str):
+            from datetime import datetime
             lease_start = datetime.strptime(lease_start_str, "%Y-%m-%d").date()
         else:
             lease_start = dt_date.today()
@@ -1638,7 +1811,8 @@ async def generate_annex(data: dict, current_user=Depends(require_editor)):
             "revenue_share_years":  int(data.get("revenue_share_years", 0)),
         }
 
-        import sys
+        # Build Excel in memory
+        import sys, os
         sys.path.insert(0, "/app")
         from build_annex import build_annex
 
@@ -1652,8 +1826,8 @@ async def generate_annex(data: dict, current_user=Depends(require_editor)):
         file_b64 = base64.b64encode(file_bytes).decode()
         filename = f"Financial_Annex_{annex_data['tenant_name'].replace(' ','_')}_{annex_data['project'][:10].replace(' ','_')}.xlsx"
 
-        conn = get_db()
-        log_activity(conn, current_user["id"], "generated annex", "document",
+        log_activity(conn := get_db(), current_user["id"],
+                     "generated annex", "document",
                      annex_data["tenant_name"], annex_data["project"])
         conn.commit(); conn.close()
 
@@ -1672,27 +1846,18 @@ async def generate_annex(data: dict, current_user=Depends(require_editor)):
 async def get_embed_token(report_id: str, workspace_id: str = PBI_WORKSPACE_ID, current_user=Depends(get_current_user)):
     try:
         async with httpx.AsyncClient() as client:
-            token_resp = await client.post(
-                f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/oauth2/v2.0/token",
-                data={"grant_type":"client_credentials","client_id":AZURE_CLIENT_ID,
-                      "client_secret":AZURE_CLIENT_SECRET,
-                      "scope":"https://analysis.windows.net/powerbi/api/.default"})
-            if token_resp.status_code != 200:
-                raise HTTPException(500, f"Azure token error: {token_resp.text}")
+            token_resp = await client.post(f"https://login.microsoftonline.com/{AZURE_TENANT_ID}/oauth2/v2.0/token",
+                data={"grant_type":"client_credentials","client_id":AZURE_CLIENT_ID,"client_secret":AZURE_CLIENT_SECRET,"scope":"https://analysis.windows.net/powerbi/api/.default"})
+            if token_resp.status_code != 200: raise HTTPException(500, f"Azure token error: {token_resp.text}")
             access_token = token_resp.json()["access_token"]
-            embed_resp = await client.post(
-                f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}/GenerateToken",
-                headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
-                json={"accessLevel": "View"})
-            if embed_resp.status_code != 200:
-                raise HTTPException(500, f"PBI embed error: {embed_resp.text}")
+            embed_resp = await client.post(f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}/GenerateToken",
+                headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}, json={"accessLevel": "View"})
+            if embed_resp.status_code != 200: raise HTTPException(500, f"PBI embed error: {embed_resp.text}")
             embed_data = embed_resp.json()
-            report_resp = await client.get(
-                f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}",
+            report_resp = await client.get(f"https://api.powerbi.com/v1.0/myorg/groups/{workspace_id}/reports/{report_id}",
                 headers={"Authorization": f"Bearer {access_token}"})
             report_data = report_resp.json()
-            return {"token": embed_data["token"], "tokenId": embed_data["tokenId"],
-                    "expiration": embed_data["expiration"],
+            return {"token": embed_data["token"], "tokenId": embed_data["tokenId"], "expiration": embed_data["expiration"],
                     "embedUrl": report_data.get("embedUrl",""), "reportId": report_id}
     except HTTPException: raise
     except Exception as e: raise HTTPException(500, str(e))
