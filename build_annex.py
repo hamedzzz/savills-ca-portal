@@ -66,6 +66,7 @@ def build_annex(data: dict, output_path: str):
     vr    = data.get("vat_rent", 0.01)
     vs    = data.get("vat_sc", 0.14)
     rs_yr = data.get("revenue_share_years", 0)   # how many RS years
+    mkt_rate = data.get("marketing_rate", 0.0)   # e.g. 0.02 for 2%
 
     # ── Build year schedule ──────────────────────────────────────────────────
     years = []
@@ -77,6 +78,7 @@ def build_annex(data: dict, output_path: str):
         rent_monthly = 0.0 if is_rs else bm * ((1 + esc) ** max(0, y - rs_yr))
         sc_monthly   = scm1 * ((1 + sc_esc) ** max(0, y - rs_yr))
 
+        mkt_monthly = rent_monthly * mkt_rate
         years.append({
             "y":           y + 1,
             "label":       f"السنة {y+1}",
@@ -90,6 +92,10 @@ def build_annex(data: dict, output_path: str):
             "vat_rent_ann":rent_monthly * vr * 12,
             "vat_sc_m":    sc_monthly * vs,
             "vat_sc_ann":  sc_monthly * vs * 12,
+            "mkt_m":       mkt_monthly,
+            "mkt_ann":     mkt_monthly * 12,
+            "vat_mkt_m":   mkt_monthly * vs,
+            "vat_mkt_ann": mkt_monthly * vs * 12,
         })
 
     # Security deposit = 3 months of (rent + SC) of first rent-paying year
@@ -234,8 +240,35 @@ def build_annex(data: dict, output_path: str):
                   "", tot_sc_total])
     r += 2
 
-    # ── Section 3: SECURITY DEPOSIT ──────────────────────────────────────────
-    section_header(r, "ثالثاً: التأمين النقدي")
+    # ── Section 3: MARKETING CHARGES (if applicable) ────────────────────────
+    if mkt_rate > 0:
+        section_header(r, "ثالثاً: رسوم التسويق")
+        r += 1
+        col_header(r, ["السنة","الفترة","رسوم التسويق الشهرية","رسوم التسويق السنوية",
+                        "ضريبة قيمة مضافة شهري","ضريبة قيمة مضافة سنوي",
+                        "إجمالي شهري (شامل ض.ق.م)","إجمالي سنوي (شامل ض.ق.م)"])
+        r += 1
+        for y in years:
+            total_m   = y["mkt_m"] + y["vat_mkt_m"]
+            total_ann = y["mkt_ann"] + y["vat_mkt_ann"]
+            money_row(r, y, [y["label"], y["period"],
+                             y["mkt_m"], y["mkt_ann"],
+                             y["vat_mkt_m"], y["vat_mkt_ann"],
+                             total_m, total_ann])
+            r += 1
+        tot_mkt_ann   = sum(y["mkt_ann"] for y in years)
+        tot_vat_mkt   = sum(y["vat_mkt_ann"] for y in years)
+        tot_mkt_total = tot_mkt_ann + tot_vat_mkt
+        total_row(r, ["الإجمالي","",
+                      "", tot_mkt_ann,
+                      "", tot_vat_mkt,
+                      "", tot_mkt_total])
+        r += 2
+        deposit_label = "رابعاً: التأمين النقدي"
+    else:
+        deposit_label = "ثالثاً: التأمين النقدي"
+
+    # ── Section DEPOSIT: SECURITY DEPOSIT ──────────────────────────────────    section_header(r, deposit_label)
     r += 1
     dep_rent  = first_rent_year["rent_m"]  * 3
     dep_sc    = first_rent_year["sc_m"]    * 3
@@ -305,7 +338,7 @@ def build_annex(data: dict, output_path: str):
         ("VAT on Rent", f"{vr*100:.1f}%"),
         ("VAT on Service Charge", f"{vs*100:.0f}%"),
         ("Security Deposit", f"EGP {deposit:,.0f}"),
-    ]
+    ] + ([("Marketing Rate", f"{mkt_rate*100:.1f}% of annual rent")] if mkt_rate > 0 else [])
 
     r2 = 4
     for label, val in info_rows:
@@ -325,8 +358,9 @@ def build_annex(data: dict, output_path: str):
 
     r2 += 1
     # Year table
+    has_mkt = mkt_rate > 0
     headers = ["Year", "Period", "Monthly Rent", "Annual Rent",
-               "Monthly SC", "Annual SC", "Total Monthly (incl VAT)", "Total Annual (incl VAT)"]
+               "Monthly SC", "Annual SC"] +               (["Monthly Marketing", "Annual Marketing"] if has_mkt else []) +               ["Total Monthly (incl VAT)", "Total Annual (incl VAT)"]
     for j, h in enumerate(headers, 1):
         ws2.column_dimensions[get_column_letter(j)].width = 18
         c = ws2.cell(r2, j, h)
@@ -339,10 +373,11 @@ def build_annex(data: dict, output_path: str):
 
     for y in years:
         label = f"Year {y['y']}" + (" (Rev. Share)" if y["is_rs"] else "")
-        total_m   = y["rent_m"] + y["sc_m"] + y["vat_rent_m"] + y["vat_sc_m"]
+        total_m   = y["rent_m"] + y["sc_m"] + y["vat_rent_m"] + y["vat_sc_m"] +                      (y["mkt_m"] + y["vat_mkt_m"] if has_mkt else 0)
         total_ann = total_m * 12
+        mkt_cols  = [y["mkt_m"], y["mkt_ann"]] if has_mkt else []
         row_data  = [label, y["period"], y["rent_m"], y["rent_ann"],
-                     y["sc_m"], y["sc_ann"], total_m, total_ann]
+                     y["sc_m"], y["sc_ann"]] + mkt_cols + [total_m, total_ann]
         for j, val in enumerate(row_data, 1):
             c = ws2.cell(r2, j, val)
             c.font   = Font(name="Arial", size=9)
