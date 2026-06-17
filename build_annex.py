@@ -6,7 +6,6 @@ from dateutil.relativedelta import relativedelta
 from datetime import date
 import math
 
-# ── Savills brand colors ──────────────────────────────────────────────────────
 YELLOW   = "FEDE07"
 DARK     = "1A2332"
 MID_GRAY = "F2F2F2"
@@ -28,8 +27,7 @@ def cell_style(ws, cell_ref, value=None, bold=False, size=10, color="000000",
     c.font = Font(name="Arial", bold=bold, size=size, color=color)
     if bg:
         c.fill = PatternFill("solid", fgColor=bg)
-    c.alignment = Alignment(horizontal=align, vertical="center",
-                             wrap_text=wrap)
+    c.alignment = Alignment(horizontal=align, vertical="center", wrap_text=wrap)
     if border:
         c.border = all_border()
     if num_fmt:
@@ -37,47 +35,27 @@ def cell_style(ws, cell_ref, value=None, bold=False, size=10, color="000000",
     return c
 
 def build_annex(data: dict, output_path: str):
-    """
-    data keys:
-      tenant_name   : str
-      unit          : str
-      project       : str
-      lease_start   : date
-      num_years     : int
-      base_monthly  : float      (Year-1 monthly rent, EGP)
-      escalation    : float      (e.g. 0.10 for 10%)
-      sc_monthly_y1 : float      (Year-1 monthly SC, EGP)
-      sc_escalation : float      (SC escalation rate, default same as rent)
-      vat_rent      : float      (default 0.01)
-      vat_sc        : float      (default 0.14)
-      revenue_share_years : int  (0 = none, 1 = year-1 is RS at zero rent)
-      area_sqm      : float | None
-      sc_per_sqm    : float | None
-    """
     tn    = data["tenant_name"]
     unit  = data["unit"]
     proj  = data["project"]
-    ls    = data["lease_start"]            # date object
+    ls    = data["lease_start"]
     ny    = data["num_years"]
-    bm    = data["base_monthly"]           # monthly rent Y1
+    bm    = data["base_monthly"]
     esc   = data["escalation"]
     scm1  = data["sc_monthly_y1"]
     sc_esc= data.get("sc_escalation", esc)
     vr    = data.get("vat_rent", 0.01)
     vs    = data.get("vat_sc", 0.14)
-    rs_yr = data.get("revenue_share_years", 0)   # how many RS years
-    mkt_rate = data.get("marketing_rate", 0.0)   # e.g. 0.02 for 2%
+    rs_yr = data.get("revenue_share_years", 0)
+    mkt_rate = data.get("marketing_rate", 0.0)
 
-    # ── Build year schedule ──────────────────────────────────────────────────
     years = []
     for y in range(ny):
         yr_start = ls + relativedelta(years=y)
         yr_end   = ls + relativedelta(years=y+1) - relativedelta(days=1)
         is_rs    = (y < rs_yr)
-
         rent_monthly = 0.0 if is_rs else bm * ((1 + esc) ** max(0, y - rs_yr))
         sc_monthly   = scm1 * ((1 + sc_esc) ** max(0, y - rs_yr))
-
         mkt_annual  = round(rent_monthly * 12 * mkt_rate, 2)
         years.append({
             "y":           y + 1,
@@ -96,15 +74,10 @@ def build_annex(data: dict, output_path: str):
             "vat_mkt_ann": round(mkt_annual * vs, 2),
         })
 
-    # Security deposit = 3 months of (rent + SC) of first rent-paying year
     first_rent_year = next((y for y in years if not y["is_rs"]), years[0])
     deposit = (first_rent_year["rent_m"] + first_rent_year["sc_m"]) * 3
 
     wb = Workbook()
-
-    # ════════════════════════════════════════════════════════════════════════
-    # SHEET 1 — Payment Schedule (Arabic)
-    # ════════════════════════════════════════════════════════════════════════
     ws = wb.active
     ws.title = "جدول السداد"
     ws.sheet_view.rightToLeft = True
@@ -117,7 +90,6 @@ def build_annex(data: dict, output_path: str):
     ws.column_dimensions["G"].width = 18
     ws.column_dimensions["H"].width = 18
 
-    # ── Header ───────────────────────────────────────────────────────────────
     ws.merge_cells("A1:H1")
     c = ws["A1"]
     c.value = "ملحق مالي — جدول السداد"
@@ -137,14 +109,12 @@ def build_annex(data: dict, output_path: str):
     ws.merge_cells("A3:H3")
     ws.row_dimensions[3].height = 8
 
-    # ── Section helper ───────────────────────────────────────────────────────
     def section_header(row, title):
         ws.merge_cells(f"A{row}:H{row}")
         c = ws.cell(row, 1, title)
         c.font  = Font(name="Arial", bold=True, size=10, color=LIGHT)
         c.fill  = PatternFill("solid", fgColor=DARK)
-        c.alignment = Alignment(horizontal="center", vertical="center",
-                                wrap_text=True)
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         ws.row_dimensions[row].height = 20
 
     def col_header(row, cols):
@@ -152,14 +122,12 @@ def build_annex(data: dict, output_path: str):
             c = ws.cell(row, j, txt)
             c.font  = Font(name="Arial", bold=True, size=9, color=DARK)
             c.fill  = PatternFill("solid", fgColor=MID_GRAY)
-            c.alignment = Alignment(horizontal="center", vertical="center",
-                                    wrap_text=True)
+            c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
             c.border = all_border()
         ws.row_dimensions[row].height = 28
 
     _data_row_count = [0]
     def money_row(row, year_dict, cols):
-        """Write one data row with alternating row colors."""
         _data_row_count[0] += 1
         bg = LIGHT if _data_row_count[0] % 2 == 1 else MID_GRAY
         for j, val in enumerate(cols, 1):
@@ -168,8 +136,7 @@ def build_annex(data: dict, output_path: str):
             c.font   = Font(name="Arial", size=9, color="000000")
             c.fill   = PatternFill("solid", fgColor=bg)
             c.border = all_border()
-            c.alignment = Alignment(horizontal="right" if isinstance(val, float) else "center",
-                                    vertical="center")
+            c.alignment = Alignment(horizontal="right" if isinstance(val, float) else "center", vertical="center")
             if isinstance(val, (float, int)) and not isinstance(val, bool):
                 c.number_format = '#,##0.00'
         ws.row_dimensions[row].height = 18
@@ -181,21 +148,18 @@ def build_annex(data: dict, output_path: str):
             c.font  = Font(name="Arial", bold=True, size=9, color=DARK)
             c.fill  = PatternFill("solid", fgColor=YELLOW)
             c.border = all_border()
-            c.alignment = Alignment(horizontal="right" if isinstance(val, (float,int)) else "center",
-                                    vertical="center")
+            c.alignment = Alignment(horizontal="right" if isinstance(val, (float,int)) else "center", vertical="center")
             if isinstance(val, (float,int)) and not isinstance(val,bool):
                 c.number_format = '#,##0.00'
         ws.row_dimensions[row].height = 20
 
-    # ── Section 1: RENT ──────────────────────────────────────────────────────
     r = 4
-    section_header(r, "أولاً: جدول الإيجار الأساسي")
+    section_header(r, f"أولاً: جدول الإيجار الأساسي  —  تصاعد سنوي {esc*100:g}%")
     r += 1
     col_header(r, ["السنة","الفترة","الإيجار الشهري","الإيجار السنوي",
                     "ضريبة قيمة مضافة شهري","ضريبة قيمة مضافة سنوي",
                     "إجمالي شهري (شامل ض.ق.م)","إجمالي سنوي (شامل ض.ق.م)"])
     r += 1
-    rent_start_row = r
     for y in years:
         label = f"{y['label']} (Revenue Share)" if y["is_rs"] else y["label"]
         total_m   = round(y["rent_m"] + y["vat_rent_m"], 2)
@@ -205,18 +169,13 @@ def build_annex(data: dict, output_path: str):
                          y["vat_rent_m"], y["vat_rent_ann"],
                          total_m, total_ann])
         r += 1
-    # Totals
     tr = r
     tot_rent_ann    = sum(y["rent_ann"] for y in years)
     tot_vat_rent    = sum(y["vat_rent_ann"] for y in years)
     tot_rent_total  = tot_rent_ann + tot_vat_rent
-    total_row(tr, ["الإجمالي","",
-                   "",  tot_rent_ann,
-                   "",  tot_vat_rent,
-                   "",  tot_rent_total])
+    total_row(tr, ["الإجمالي","", "", tot_rent_ann, "", tot_vat_rent, "", tot_rent_total])
     r += 2
 
-    # ── Section 2: SERVICE CHARGE ─────────────────────────────────────────────
     section_header(r, "ثانياً: جدول رسوم الخدمات")
     r += 1
     col_header(r, ["السنة","الفترة","رسوم الخدمات الشهرية","رسوم الخدمات السنوية",
@@ -234,13 +193,9 @@ def build_annex(data: dict, output_path: str):
     tot_sc_ann   = sum(y["sc_ann"] for y in years)
     tot_vat_sc   = sum(y["vat_sc_ann"] for y in years)
     tot_sc_total = tot_sc_ann + tot_vat_sc
-    total_row(r, ["الإجمالي","",
-                  "", tot_sc_ann,
-                  "", tot_vat_sc,
-                  "", tot_sc_total])
+    total_row(r, ["الإجمالي","", "", tot_sc_ann, "", tot_vat_sc, "", tot_sc_total])
     r += 2
 
-    # ── Section 3: MARKETING CHARGES (if applicable) ────────────────────────
     if mkt_rate > 0:
         section_header(r, "ثالثاً: رسوم التسويق")
         r += 1
@@ -259,20 +214,16 @@ def build_annex(data: dict, output_path: str):
         tot_mkt_ann   = sum(y["mkt_ann"] for y in years)
         tot_vat_mkt   = sum(y["vat_mkt_ann"] for y in years)
         tot_mkt_total = tot_mkt_ann + tot_vat_mkt
-        total_row(r, ["الإجمالي","",
-                      "", "",
-                      tot_mkt_ann, tot_vat_mkt,
-                      tot_mkt_total, ""])
+        total_row(r, ["الإجمالي","", "", "", tot_mkt_ann, tot_vat_mkt, tot_mkt_total, ""])
         r += 2
         deposit_label = "رابعاً: التأمين النقدي"
     else:
         deposit_label = "ثالثاً: التأمين النقدي"
 
-    # ── Section DEPOSIT: SECURITY DEPOSIT ──────────────────────────────────
     section_header(r, deposit_label)
     r += 1
-    dep_rent  = first_rent_year["rent_m"]  * 3
-    dep_sc    = first_rent_year["sc_m"]    * 3
+    dep_rent  = first_rent_year["rent_m"] * 3
+    dep_sc    = first_rent_year["sc_m"]   * 3
     rows_dep = [
         ("ثلاثة أشهر إيجار", dep_rent),
         ("ثلاثة أشهر رسوم خدمات", dep_sc),
@@ -281,15 +232,13 @@ def build_annex(data: dict, output_path: str):
     for label, val in rows_dep:
         ws.merge_cells(f"A{r}:F{r}")
         c = ws.cell(r, 1, label)
-        c.font   = Font(name="Arial", size=9,
-                        bold=(label.startswith("إجمالي")))
+        c.font   = Font(name="Arial", size=9, bold=(label.startswith("إجمالي")))
         c.fill   = PatternFill("solid", fgColor=(YELLOW if label.startswith("إجمالي") else LIGHT))
         c.border = all_border()
         c.alignment = Alignment(horizontal="right", vertical="center")
         ws.merge_cells(f"G{r}:H{r}")
         c2 = ws.cell(r, 7, val)
-        c2.font   = Font(name="Arial", size=9,
-                         bold=(label.startswith("إجمالي")))
+        c2.font   = Font(name="Arial", size=9, bold=(label.startswith("إجمالي")))
         c2.fill   = PatternFill("solid", fgColor=(YELLOW if label.startswith("إجمالي") else LIGHT))
         c2.border = all_border()
         c2.alignment = Alignment(horizontal="right", vertical="center")
@@ -297,17 +246,14 @@ def build_annex(data: dict, output_path: str):
         ws.row_dimensions[r].height = 18
         r += 1
 
-    # ── Footer ───────────────────────────────────────────────────────────────
     r += 1
     ws.merge_cells(f"A{r}:H{r}")
     c = ws.cell(r, 1)
-    c.value = "جميع المبالغ بالجنيه المصري (EGP)  |  الإيجار يخضع للتصاعد السنوي المتفق عليه"
+    c.value = f"جميع المبالغ بالجنيه المصري (EGP)  |  الإيجار يخضع للتصاعد السنوي بنسبة {esc*100:g}% سنوياً"
     c.font  = Font(name="Arial", size=8, italic=True, color="666666")
     c.alignment = Alignment(horizontal="center", vertical="center")
 
-    # ════════════════════════════════════════════════════════════════════════
-    # SHEET 2 — Summary (English)
-    # ════════════════════════════════════════════════════════════════════════
+    # Sheet 2 — Summary
     ws2 = wb.create_sheet("Summary")
     ws2.column_dimensions["A"].width = 30
     ws2.column_dimensions["B"].width = 25
@@ -335,7 +281,7 @@ def build_annex(data: dict, output_path: str):
         ("Project", proj),
         ("Lease Start", ls.strftime("%d %B %Y")),
         ("Lease Term", f"{ny} Years"),
-        ("Escalation", f"{esc*100:.0f}% per annum"),
+        ("Escalation", f"{esc*100:g}% per annum"),
         ("VAT on Rent", f"{vr*100:.1f}%"),
         ("VAT on Service Charge", f"{vs*100:.0f}%"),
         ("Security Deposit", f"EGP {deposit:,.0f}"),
@@ -343,7 +289,6 @@ def build_annex(data: dict, output_path: str):
 
     r2 = 4
     for label, val in info_rows:
-        ws2.merge_cells(f"A{r2}:A{r2}")
         c = ws2.cell(r2, 1, label)
         c.font   = Font(name="Arial", bold=True, size=9)
         c.fill   = PatternFill("solid", fgColor=MID_GRAY)
@@ -358,10 +303,10 @@ def build_annex(data: dict, output_path: str):
         r2 += 1
 
     r2 += 1
-    # Year table
     has_mkt = mkt_rate > 0
-    headers = ["Year", "Period", "Monthly Rent", "Annual Rent",
-               "Monthly SC", "Annual SC"] +               (["Monthly Marketing", "Annual Marketing"] if has_mkt else []) +               ["Total Monthly (incl VAT)", "Total Annual (incl VAT)"]
+    headers = ["Year", "Period", "Monthly Rent", "Annual Rent", "Monthly SC", "Annual SC"] + \
+              (["Monthly Marketing", "Annual Marketing"] if has_mkt else []) + \
+              ["Total Monthly (incl VAT)", "Total Annual (incl VAT)"]
     for j, h in enumerate(headers, 1):
         ws2.column_dimensions[get_column_letter(j)].width = 18
         c = ws2.cell(r2, j, h)
@@ -384,33 +329,26 @@ def build_annex(data: dict, output_path: str):
             c = ws2.cell(r2, j, val)
             c.font   = Font(name="Arial", size=9)
             c.border = all_border()
-            c.alignment = Alignment(horizontal="right" if isinstance(val,float) else "center",
-                                    vertical="center")
+            c.alignment = Alignment(horizontal="right" if isinstance(val,float) else "center", vertical="center")
             if isinstance(val, float):
                 c.number_format = '#,##0.00'
         ws2.row_dimensions[r2].height = 18
         r2 += 1
 
-    # Totals row summary
     tot_all_ann = sum(y["rent_ann"]+y["sc_ann"]+y["vat_rent_ann"]+y["vat_sc_ann"] for y in years)
-    for j, val in enumerate(["TOTAL","","","",
-                              "", "",
-                              "", tot_all_ann], 1):
+    for j, val in enumerate(["TOTAL","","","","","","",tot_all_ann], 1):
         c = ws2.cell(r2, j, val)
         c.font  = Font(name="Arial", bold=True, size=9)
         c.fill  = PatternFill("solid", fgColor=YELLOW)
         c.border = all_border()
-        c.alignment = Alignment(horizontal="right" if isinstance(val,float) else "center",
-                                vertical="center")
+        c.alignment = Alignment(horizontal="right" if isinstance(val,float) else "center", vertical="center")
         if isinstance(val, float):
             c.number_format = '#,##0.00'
     ws2.row_dimensions[r2].height = 20
 
     wb.save(output_path)
-    print(f"✅ Saved: {output_path}")
     return years, deposit
 
-# ── Test with a sample deal ───────────────────────────────────────────────────
 if __name__ == "__main__":
     test_data = {
         "tenant_name": "Cilantro",
@@ -426,10 +364,8 @@ if __name__ == "__main__":
         "vat_sc": 0.14,
         "revenue_share_years": 0,
     }
-
     years, deposit = build_annex(test_data, "/home/claude/test_annex.xlsx")
-
     print("\n── Rent Schedule ──")
     for y in years:
-        print(f"  Y{y['y']} | {y['period']} | Rent/mo: {y['rent_m']:>12,.0f} | SC/mo: {y['sc_m']:>10,.0f}")
-    print(f"\n  Security Deposit: EGP {deposit:,.0f}")
+        print(f"  Y{y['y']} | Rent/mo: {y['rent_m']:>12,.0f}")
+    print(f"  Security Deposit: EGP {deposit:,.0f}")
