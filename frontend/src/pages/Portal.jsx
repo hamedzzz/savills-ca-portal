@@ -1228,10 +1228,18 @@ placeholder={"مثال:\nالمستأجر: سيلانترو\nالوحدة: F-01\
                       background:val==null?"#FEF2F2":"#fff"}}
               value={display}
               onChange={e=>{
-                let v=e.target.value;
-                if(type==="number") v=parseFloat(v)||0;
-                setAnnexExtracted(prev=>({...prev,[key]:v}));
-              }}/>
+            let v=e.target.value;
+            if(type==="number") v=parseFloat(v)||0;
+            else if(type==="percent") v=e.target.value;
+            setAnnexExtracted(prev=>({...prev,[key]:v}));
+          }}
+          onBlur={e=>{
+            if(type==="percent"){
+              const parsed=parseFloat(e.target.value);
+              if(!isNaN(parsed))
+                setAnnexExtracted(prev=>({...prev,[key]:parsed/100}));
+            }
+          }}/>
         }
         {val==null&&<div style={{fontSize:10,color:QB.red}}>⚠ لم يُذكر — يرجى التعبئة</div>}
       </div>
