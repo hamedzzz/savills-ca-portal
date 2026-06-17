@@ -1821,30 +1821,33 @@ Deal description:
         if matches:
             content = matches[0].strip()
         else:
-            # Fallback: just strip lines with backticks
+   # Fallback: just strip lines with backticks
             lines = content.splitlines()
             content = "\n".join([l for l in lines if not l.strip().startswith("```")]).strip()
-
     # Isolate JSON object by finding first '{' and last '}'
     start = content.find('{')
     end = content.rfind('}')
     if start != -1 and end != -1 and end > start:
         content = content[start:end+1]
-
     try:
-        # Standard parse
         extracted = json.loads(content)
     except Exception as e:
-  # If parsing fails, try to fix common JSON issues like unescaped newlines
-        except Exception as e:
+        try:
+            fixed_content = re.sub(r'(?<=: ")(.*?)(?=",|(?="\s*\}))', 
+                                   lambda m: m.group(1).replace('\n', '\\n').replace('\r', '\\r'), 
+                                   content, flags=re.DOTALL)
+            extracted = json.loads(fixed_content)
+        except:
             try:
-                # Try regex fix first
-                fixed_content = re.sub(r'(?<=: ")(.*?)(?=",|(?="\s*\}))', 
-                                       lambda m: m.group(1).replace('\n', '\\n').replace('\r', '\\r'), 
-                                       content, flags=re.DOTALL)
-                extracted = json.loads(fixed_content)
+                salvage = content.strip().rstrip(',').rstrip()
+                opens = salvage.count('{') - salvage.count('}')
+                if opens > 0:
+                    salvage = salvage + '}' * opens
+                extracted = json.loads(salvage)
             except:
-                # Try to salvage truncated JSON by closing open braces
+                raise HTTPException(500, f"Could not parse AI response: {str(e)}\nContent: {content[:200]}")
+
+    return {"ok": True, "data": extracted}
                 try:
                     salvage = content.strip().rstrip(',').rstrip()
                     opens = salvage.count('{') - salvage.count('}')
