@@ -1139,153 +1139,156 @@ export default function Portal(){
           );
         })()}
 
-        {/* ══════════════════════════════════════════════════════════════════
+{/* ══════════════════════════════════════════════════════════════════
             FINANCIAL ANNEX TAB
         ══════════════════════════════════════════════════════════════════ */}
-        {tab==="annex"&&<div style={{maxWidth:900}}>
-          <div style={{marginBottom:20}}>
-            <div style={{fontSize:15,fontWeight:600,color:QB.textPrimary,marginBottom:4}}>Financial Annex Generator</div>
-            <div style={{fontSize:13,color:QB.textMuted}}>اكتب تفاصيل الصفقة بأي شكل — الـ AI هيستخرج الأرقام ويولد الملف</div>
-          </div>
-
-          {/* Step 1: Input */}
-          <div style={{...s.card,marginBottom:16}}>
-            <div style={{fontSize:13,fontWeight:600,color:QB.textPrimary,marginBottom:10}}>
-              <span style={{background:QB.blue,color:"#fff",borderRadius:"50%",width:22,height:22,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,marginRight:8}}>1</span>
-              أدخل تفاصيل الصفقة
+        {tab === "annex" && (
+          <div style={{ maxWidth: 900 }}>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: QB.textPrimary, marginBottom: 4 }}>Financial Annex Generator</div>
+              <div style={{ fontSize: 13, color: QB.textMuted }}>اكتب تفاصيل الصفقة بأي شكل — الـ AI هيستخرج الأرقام ويولد الملف</div>
             </div>
-            <textarea style={{...s.input,width:"100%",minHeight:160,resize:"vertical",fontSize:13,lineHeight:1.7,fontFamily:QB.fontFamily}}
-placeholder={"مثال:\nالمستأجر: سيلانترو\nالوحدة: F-01\nالمشروع: Giza Zoo Commercial Destination\nبداية العقد: نوفمبر 2025\nمدة العقد: 5 سنوات\nإيجار شهري السنة الأولى: 150,000 جنيه\nتصاعد سنوي: 10%\nرسوم خدمات شهرية: 30,000 جنيه\nسنة Revenue Share: لا\nرسوم تسويق: 2%"}
-              value={annexText} onChange={e=>setAnnexText(e.target.value)}/>
-            <div style={{display:"flex",gap:8,marginTop:10}}>
-              <button style={{...s.btnP,padding:"8px 20px"}} disabled={!annexText.trim()||annexLoading}
-                onClick={async()=>{
-                  setAnnexLoading(true); setAnnexError(""); setAnnexExtracted(null);
-                  try{
-                    const d=await apiFetch("/annex/extract",{method:"POST",body:JSON.stringify({text:annexText})});
-                    if(d?.data) setAnnexExtracted(d.data);
-                    else setAnnexError("فشل في استخراج البيانات");
-                  }catch(e){setAnnexError(e.message||"حدث خطأ");}
-                  finally{setAnnexLoading(false);}
-                }}>
-                {annexLoading?"⏳ جاري التحليل...":"🤖 استخرج البيانات بالـ AI"}
-              </button>
-              {annexExtracted&&<button style={{...s.btnS,padding:"8px 16px"}} onClick={()=>setAnnexExtracted(null)}>مسح</button>}
-            </div>
-            {annexError&&<div style={{marginTop:8,padding:"8px 12px",background:"#FEF2F2",color:"#C80C0F",borderRadius:QB.radiusMD,fontSize:12}}>{annexError}</div>}
-          </div>
 
-          {/* Step 2: Review & Edit */}
-          {annexExtracted&&(()=>{
-            const d=annexExtracted;
-            const fields=[
-              {key:"tenant_name",label:"اسم المستأجر",type:"text"},
-              {key:"unit",label:"رقم الوحدة",type:"text"},
-              {key:"project",label:"المشروع",type:"text"},
-              {key:"lease_start",label:"تاريخ بداية العقد",type:"date"},
-              {key:"num_years",label:"مدة العقد (سنوات)",type:"number"},
-              {key:"base_monthly",label:"الإيجار الشهري - السنة الأولى (EGP)",type:"number"},
-              {key:"escalation",label:"نسبة التصاعد السنوي",type:"percent"},
-              {key:"sc_monthly_y1",label:"رسوم الخدمات الشهرية - السنة الأولى (EGP)",type:"number"},
-              {key:"revenue_share_years",label:"عدد سنوات Revenue Share",type:"number"},
-              {key:"vat_rent",label:"ضريبة القيمة المضافة على الإيجار",type:"percent"},
-              {key:"vat_sc",label:"ضريبة القيمة المضافة على رسوم الخدمات",type:"percent"},
-              {key:"marketing_rate",label:"رسوم التسويق (% من الإيجار السنوي — اتركه 0 لو مش موجود)",type:"percent"},
-            ];
-            return(
-              <div style={{...s.card,marginBottom:16}}>
-                <div style={{fontSize:13,fontWeight:600,color:QB.textPrimary,marginBottom:14}}>
-                  <span style={{background:QB.blue,color:"#fff",borderRadius:"50%",width:22,height:22,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:11,marginRight:8}}>2</span>
-                  راجع وعدّل البيانات المستخرجة
-                </div>
-                {d.notes&&<div style={{marginBottom:12,padding:"8px 12px",background:QB.blueLight,borderRadius:QB.radiusMD,fontSize:12,color:QB.blue}}>
-                  💡 ملاحظة الـ AI: {d.notes}
-                </div>}
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                {fields.map(({key,label,type})=>{
-    const val=d[key];
-    const display=type==="percent"&&val!=null
-  ? String(parseFloat((val*100).toFixed(2)))
-  : val??""
-return(
-      <div key={key}>
-        <label style={s.label}>{label}</label>
-        {type==="percent"
-          ? <input
-              key={key+"_"+String(val)}
-              type="text"
-              style={{...s.input,borderColor:val==null?QB.red:QB.borderInput,
-                      background:val==null?"#FEF2F2":"#fff"}}
-              defaultValue={display}
-              placeholder="e.g. 10"
-              onBlur={e=>{
-                const v=parseFloat(e.target.value);
-                if(!isNaN(v)) setAnnexExtracted(prev=>({...prev,[key]:v/100}));
-              }}/>
-          : <input
-              type={type==="date"?"date":"text"}
-              style={{...s.input,borderColor:val==null?QB.red:QB.borderInput,
-                      background:val==null?"#FEF2F2":"#fff"}}
-              value={display}
-              onChange={e=>{
-            let v=e.target.value;
-            if(type==="number") v=parseFloat(v)||0;
-            else if(type==="percent") v=e.target.value;
-            setAnnexExtracted(prev=>({...prev,[key]:v}));
-          }}
-          onBlur={e=>{
-            if(type==="percent"){
-              const parsed=parseFloat(e.target.value);
-              if(!isNaN(parsed))
-                setAnnexExtracted(prev=>({...prev,[key]:parsed/100}));
-            }
-          }}/>
-        }
-        {val==null&&<div style={{fontSize:10,color:QB.red}}>⚠ لم يُذكر — يرجى التعبئة</div>}
-      </div>
-    );
-  })}                <div style={{marginTop:14,paddingTop:12,borderTop:`1px solid ${QB.borderLight}`,display:"flex",gap:8}}>
-                  <button style={{...s.btnP,padding:"9px 24px",fontSize:13}}
-                    disabled={annexGenerating||!d.tenant_name||!d.lease_start||!d.num_years||!d.base_monthly}
-                    onClick={async()=>{
-                      setAnnexGenerating(true); setAnnexError("");
-                      try{
-                        const payload={...d};
-                        const res=await apiFetch("/annex/generate",{method:"POST",body:JSON.stringify(payload)});
-                        if(res?.ok){
-                          // Download the file
-                          const bytes=Uint8Array.from(atob(res.file_b64),c=>c.charCodeAt(0));
-                          const blob=new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
-                          const url=URL.createObjectURL(blob);
-                          const a=document.createElement("a"); a.href=url; a.download=res.filename;
-                          document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-                          flash("✅ تم توليد الملحق المالي بنجاح");
-                        } else setAnnexError(res?.detail||"فشل في توليد الملف");
-                      }catch(e){setAnnexError(e.message||"حدث خطأ");}
-                      finally{setAnnexGenerating(false);}
-                    }}>
-                    {annexGenerating?"⏳ جاري التوليد...":"📥 توليد Excel"}
-                  </button>
-                </div>
-                {annexError&&<div style={{marginTop:8,padding:"8px 12px",background:"#FEF2F2",color:"#C80C0F",borderRadius:QB.radiusMD,fontSize:12}}>{annexError}</div>}
+            {/* Step 1: Input */}
+            <div style={{ ...s.card, marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: QB.textPrimary, marginBottom: 10 }}>
+                <span style={{ background: QB.blue, color: "#fff", borderRadius: "50%", width: 22, height: 22, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, marginRight: 8 }}>1</span>
+                أدخل تفاصيل الصفقة
               </div>
-            );
-          })()}
-
-{/* Instructions */}
-          {!annexExtracted&&<div style={{...s.card,background:QB.bgSidebar}}>
-            <div style={{fontSize:12,fontWeight:600,color:QB.textSecondary,marginBottom:10}}>💡 تعليمات الاستخدام</div>
-            <div style={{fontSize:12,color:QB.textMuted,lineHeight:1.8}}>
-              <div>• اكتب تفاصيل الصفقة بأي لغة أو شكل — عربي أو إنجليزي أو مزيج</div>
-              <div>• اذكر: اسم المستأجر، رقم الوحدة، المشروع، تاريخ البداية، المدة، الإيجار، التصاعد، رسوم الخدمات</div>
-              <div>• لو فيه سنة Revenue Share اذكرها</div>
-              <div>• الـ VAT الافتراضي: 1% على الإيجار (قانون 157/2025) و14% على رسوم الخدمات</div>
-              <div>• بعد الاستخراج راجع الأرقام وعدّل أي حاجة غلط قبل التوليد</div>
+              <textarea style={{ ...s.input, width: "100%", minHeight: 160, resize: "vertical", fontSize: 13, lineHeight: 1.7, fontFamily: QB.fontFamily }}
+                placeholder={"مثال:\nالمستأجر: سيلانترو\nالوحدة: F-01\nالمشروع: Giza Zoo Commercial Destination\nبداية العقد: نوفمبر 2025\nمدة العقد: 5 سنوات\nإيجار شهري السنة الأولى: 150,000 جنيه\nتصاعد سنوي: 10%\nرسوم خدمات شهرية: 30,000 جنيه\nسنة Revenue Share: لا\nرسوم تسويق: 2%"}
+                value={annexText} onChange={e => setAnnexText(e.target.value)} />
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button style={{ ...s.btnP, padding: "8px 20px" }} disabled={!annexText.trim() || annexLoading}
+                  onClick={async () => {
+                    setAnnexLoading(true); setAnnexError(""); setAnnexExtracted(null);
+                    try {
+                      const d = await apiFetch("/annex/extract", { method: "POST", body: JSON.stringify({ text: annexText }) });
+                      if (d?.data) setAnnexExtracted(d.data);
+                      else setAnnexError("فشل في استخراج البيانات");
+                    } catch (e) { setAnnexError(e.message || "حدث خطأ"); }
+                    finally { setAnnexLoading(false); }
+                  }}>
+                  {annexLoading ? "⏳ جاري التحليل..." : "🤖 استخرج البيانات بالـ AI"}
+                </button>
+                {annexExtracted && <button style={{ ...s.btnS, padding: "8px 16px" }} onClick={() => setAnnexExtracted(null)}>مسح</button>}
+              </div>
+              {annexError && <div style={{ marginTop: 8, padding: "8px 12px", background: "#FEF2F2", color: "#C80C0F", borderRadius: QB.radiusMD, fontSize: 12 }}>{annexError}</div>}
             </div>
+
+            {/* Step 2: Review & Edit */}
+            {annexExtracted && (() => {
+              const d = annexExtracted;
+              const fields = [
+                { key: "tenant_name", label: "اسم المستأجر", type: "text" },
+                { key: "unit", label: "رقم الوحدة", type: "text" },
+                { key: "project", label: "المشروع", type: "text" },
+                { key: "lease_start", label: "تاريخ بداية العقد", type: "date" },
+                { key: "num_years", label: "مدة العقد (سنوات)", type: "number" },
+                { key: "base_monthly", label: "الإيجار الشهري - السنة الأولى (EGP)", type: "number" },
+                { key: "escalation", label: "نسبة التصاعد السنوي", type: "percent" },
+                { key: "sc_monthly_y1", label: "رسوم الخدمات الشهرية - السنة الأولى (EGP)", type: "number" },
+                { key: "revenue_share_years", label: "عدد سنوات Revenue Share", type: "number" },
+                { key: "vat_rent", label: "ضريبة القيمة المضافة على الإيجار", type: "percent" },
+                { key: "vat_sc", label: "ضريبة القيمة المضافة على رسوم الخدمات", type: "percent" },
+                { key: "marketing_rate", label: "رسوم التسويق (% من الإيجار السنوي — اتركه 0 لو مش موجود)", type: "percent" },
+              ];
+              return (
+                <div style={{ ...s.card, marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: QB.textPrimary, marginBottom: 14 }}>
+                    <span style={{ background: QB.blue, color: "#fff", borderRadius: "50%", width: 22, height: 22, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, marginRight: 8 }}>2</span>
+                    راجع وعدّل البيانات المستخرجة
+                  </div>
+                  {d.notes && <div style={{ marginBottom: 12, padding: "8px 12px", background: QB.blueLight, borderRadius: QB.radiusMD, fontSize: 12, color: QB.blue }}>
+                    💡 ملاحظة الـ AI: {d.notes}
+                  </div>}
+                  
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    {fields.map(({ key, label, type }) => {
+                      const val = d[key];
+                      const display = type === "percent" && val != null
+                        ? String(parseFloat((val * 100).toFixed(2)))
+                        : val ?? "";
+                      return (
+                        <div key={key}>
+                          <label style={s.label}>{label}</label>
+                          {type === "percent"
+                            ? <input
+                                key={key + "_" + String(val)}
+                                type="text"
+                                style={{ ...s.input, borderColor: val == null ? QB.red : QB.borderInput, background: val == null ? "#FEF2F2" : "#fff" }}
+                                defaultValue={display}
+                                placeholder="e.g. 10"
+                                onBlur={e => {
+                                  const v = parseFloat(e.target.value);
+                                  if (!isNaN(v)) setAnnexExtracted(prev => ({ ...prev, [key]: v / 100 }));
+                                }} />
+                            : <input
+                                type={type === "date" ? "date" : "text"}
+                                style={{ ...s.input, borderColor: val == null ? QB.red : QB.borderInput, background: val == null ? "#FEF2F2" : "#fff" }}
+                                value={display}
+                                onChange={e => {
+                                  let v = e.target.value;
+                                  if (type === "number") v = parseFloat(v) || 0;
+                                  else if (type === "percent") v = e.target.value;
+                                  setAnnexExtracted(prev => ({ ...prev, [key]: v }));
+                                }}
+                                onBlur={e => {
+                                  if (type === "percent") {
+                                    const parsed = parseFloat(e.target.value);
+                                    if (!isNaN(parsed)) setAnnexExtracted(prev => ({ ...prev, [key]: parsed / 100 }));
+                                  }
+                                }} />
+                          }
+                          {val == null && <div style={{ fontSize: 10, color: QB.red }}>⚠ لم يُذكر — يرجى التعبئة</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{ marginTop: 14, paddingTop: 12, borderTop: `1px solid ${QB.borderLight}`, display: "flex", gap: 8 }}>
+                    <button style={{ ...s.btnP, padding: "9px 24px", fontSize: 13 }}
+                      disabled={annexGenerating || !d.tenant_name || !d.lease_start || !d.num_years || !d.base_monthly}
+                      onClick={async () => {
+                        setAnnexGenerating(true); setAnnexError("");
+                        try {
+                          const payload = { ...d };
+                          const res = await apiFetch("/annex/generate", { method: "POST", body: JSON.stringify(payload) });
+                          if (res?.ok) {
+                            const bytes = Uint8Array.from(atob(res.file_b64), c => c.charCodeAt(0));
+                            const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement("a"); a.href = url; a.download = res.filename;
+                            document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+                            flash("✅ تم توليد الملحق المالي بنجاح");
+                          } else setAnnexError(res?.detail || "فشل في توليد الملف");
+                        } catch (e) { setAnnexError(e.message || "حدث خطأ"); }
+                        finally { setAnnexGenerating(false); }
+                      }}>
+                      {annexGenerating ? "⏳ جاري التوليد..." : "📥 توليد Excel"}
+                    </button>
+                  </div>
+                  {annexError && <div style={{ marginTop: 8, padding: "8px 12px", background: "#FEF2F2", color: "#C80C0F", borderRadius: QB.radiusMD, fontSize: 12 }}>{annexError}</div>}
+                </div>
+              );
+            })()}
+
+            {/* Instructions */}
+            {!annexExtracted && (
+              <div style={{ ...s.card, background: QB.bgSidebar }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: QB.textSecondary, marginBottom: 10 }}>💡 تعليمات الاستخدام</div>
+                <div style={{ fontSize: 12, color: QB.textMuted, lineHeight: 1.8 }}>
+                  <div>• اكتب تفاصيل الصفقة بأي لغة أو شكل — عربي أو إنجليزي أو مزيج</div>
+                  <div>• اذكر: اسم المستأجر، رقم الوحدة، المشروع، تاريخ البداية، المدة، الإيجار، التصاعد، رسوم الخدمات</div>
+                  <div>• لو فيه سنة Revenue Share اذكرها</div>
+                  <div>• الـ VAT الافتراضي: 1% على الإيجار (قانون 157/2025) و14% على رسوم الخدمات</div>
+                  <div>• بعد الاستخراج راجع الأرقام وعدّل أي حاجة غلط قبل التوليد</div>
+                </div>
+              </div>
+            )}
           </div>
-          }
-        </div>}
-        {/* ══════════════════════════════════════════════════════════════════
+        )}
+        ══════════════════════════════════════════════════════════════════
             DOCUMENTATION TAB
         ══════════════════════════════════════════════════════════════════ */}
         {(tab==="doc-sop"||tab==="doc-guide")&&<div>
