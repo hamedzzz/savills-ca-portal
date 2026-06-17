@@ -1835,23 +1835,24 @@ Deal description:
         # Standard parse
         extracted = json.loads(content)
     except Exception as e:
-        # If parsing fails, try to fix common JSON issues like unescaped newlines
-        try:
-            # This regex looks for strings in JSON and replaces actual newlines with \n
-            fixed_content = re.sub(r'(?<=: ")(.*?)(?=",|(?="\s*\}))', 
-                                   lambda m: m.group(1).replace('\n', '\\n').replace('\r', '\\r'), 
-                                   content, flags=re.DOTALL)
-            extracted = json.loads(fixed_content)
-            except Exception as e:
-            # Try to salvage truncated JSON by closing open braces
+  # If parsing fails, try to fix common JSON issues like unescaped newlines
+        except Exception as e:
             try:
-                salvage = content.strip().rstrip(',').rstrip()
-                opens = salvage.count('{') - salvage.count('}')
-                if opens > 0:
-                    salvage = salvage + '}' * opens
-                extracted = json.loads(salvage)
+                # Try regex fix first
+                fixed_content = re.sub(r'(?<=: ")(.*?)(?=",|(?="\s*\}))', 
+                                       lambda m: m.group(1).replace('\n', '\\n').replace('\r', '\\r'), 
+                                       content, flags=re.DOTALL)
+                extracted = json.loads(fixed_content)
             except:
-                raise HTTPException(500, f"Could not parse AI response: {str(e)}\nContent: {content[:200]}")
+                # Try to salvage truncated JSON by closing open braces
+                try:
+                    salvage = content.strip().rstrip(',').rstrip()
+                    opens = salvage.count('{') - salvage.count('}')
+                    if opens > 0:
+                        salvage = salvage + '}' * opens
+                    extracted = json.loads(salvage)
+                except:
+                    raise HTTPException(500, f"Could not parse AI response: {str(e)}\nContent: {content[:200]}")
 
     return {"ok": True, "data": extracted}
 
