@@ -1848,18 +1848,6 @@ Deal description:
                 raise HTTPException(500, f"Could not parse AI response: {str(e)}\nContent: {content[:200]}")
 
     return {"ok": True, "data": extracted}
-                try:
-                    salvage = content.strip().rstrip(',').rstrip()
-                    opens = salvage.count('{') - salvage.count('}')
-                    if opens > 0:
-                        salvage = salvage + '}' * opens
-                    extracted = json.loads(salvage)
-                except:
-                    raise HTTPException(500, f"Could not parse AI response: {str(e)}\nContent: {content[:200]}")
-
-    return {"ok": True, "data": extracted}
-
-
 @app.post("/annex/generate")
 async def generate_annex(data: dict, current_user=Depends(require_editor)):
     """Generate Excel financial annex from structured data"""
