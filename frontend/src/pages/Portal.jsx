@@ -1205,8 +1205,9 @@ placeholder={"مثال:\nالمستأجر: سيلانترو\nالوحدة: F-01\
                 {fields.map(({key,label,type})=>{
     const val=d[key];
     const display=type==="percent"&&val!=null
-      ? String(parseFloat((val*100).toFixed(2)))
-    return(
+  ? String(parseFloat((val*100).toFixed(2)))
+  : val??""
+return(
       <div key={key}>
         <label style={s.label}>{label}</label>
         {type==="percent"
