@@ -1733,7 +1733,7 @@ Fields to extract:
   "vat_sc": float — VAT on SC as decimal (default 0.14),
   "revenue_share_years": integer — number of Revenue Share years at start (default 0),
   "marketing_rate": float or null — marketing charges as decimal (e.g. 0.05 for 5% of annual rent), null if not mentioned,
-  "notes": "string — any important notes or assumptions made"
+  "notes": "string or null — brief note only if critical assumption made"
 }
 
 Deal description:
@@ -1763,7 +1763,7 @@ Deal description:
                     url = f"https://generativelanguage.googleapis.com/{ver}/models/{model_id}:generateContent?key={gemini_key}"
                     resp = httpx.post(url, json={
                         "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": {"maxOutputTokens": 2000, "temperature": 0.1}
+                        "generationConfig": {"maxOutputTokens": 4000, "temperature": 0.1}
                     }, timeout=60)
                     if resp.status_code == 200:
                         content = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
@@ -1843,8 +1843,16 @@ Deal description:
                                    content, flags=re.DOTALL)
             extracted = json.loads(fixed_content)
         except:
-            # If all fails, provide the raw content for debugging
-            raise HTTPException(500, f"Could not parse AI response: {str(e)}\nContent: {content[:200]}")
+            except:
+            # Try to salvage truncated JSON by closing open braces
+            try:
+                salvage = content.strip().rstrip(',').rstrip()
+                opens = salvage.count('{') - salvage.count('}')
+                if opens > 0:
+                    salvage = salvage + '}' * opens
+                extracted = json.loads(salvage)
+            except:
+                raise HTTPException(500, f"Could not parse AI response: {str(e)}\nContent: {content[:200]}")
 
     return {"ok": True, "data": extracted}
 
