@@ -1272,7 +1272,7 @@ return(
             );
           })()}
 
- {/* Instructions */}
+{/* Instructions */}
           {!annexExtracted&&<div style={{...s.card,background:QB.bgSidebar}}>
             <div style={{fontSize:12,fontWeight:600,color:QB.textSecondary,marginBottom:10}}>💡 تعليمات الاستخدام</div>
             <div style={{fontSize:12,color:QB.textMuted,lineHeight:1.8}}>
@@ -1283,9 +1283,8 @@ return(
               <div>• بعد الاستخراج راجع الأرقام وعدّل أي حاجة غلط قبل التوليد</div>
             </div>
           </div>
-        }
-        </div>} {/* 👈 دي القفلة السحرية اللي كانت ضايعة ومبوظة الدنيا! */}
-
+          }
+        </div>}
         {/* ══════════════════════════════════════════════════════════════════
             DOCUMENTATION TAB
         ══════════════════════════════════════════════════════════════════ */}
