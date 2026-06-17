@@ -1202,28 +1202,41 @@ placeholder={"مثال:\nالمستأجر: سيلانترو\nالوحدة: F-01\
                   💡 ملاحظة الـ AI: {d.notes}
                 </div>}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                  {fields.map(({key,label,type})=>{
-                    const val=d[key];
-                    const display=type==="percent"&&val!=null?(val*100).toFixed(1)+"":val??""
-                    return(
-                      <div key={key}>
-                        <label style={s.label}>{label}</label>
-                        <input type={type==="date"?"date":"text"}
-                          style={{...s.input,borderColor:val==null?QB.red:QB.borderInput,
-                                  background:val==null?"#FEF2F2":"#fff"}}
-                          value={display}
-                          onChange={e=>{
-                            let v=e.target.value;
-                            if(type==="number") v=parseFloat(v)||0;
-                            else if(type==="percent") v=parseFloat(v)/100||0;
-                            setAnnexExtracted(prev=>({...prev,[key]:v}));
-                          }}/>
-                        {val==null&&<div style={{fontSize:10,color:QB.red}}>⚠ لم يُذكر — يرجى التعبئة</div>}
-                      </div>
-                    );
-                  })}
-                </div>
-                <div style={{marginTop:14,paddingTop:12,borderTop:`1px solid ${QB.borderLight}`,display:"flex",gap:8}}>
+                {fields.map(({key,label,type})=>{
+    const val=d[key];
+    const display=type==="percent"&&val!=null
+      ? (val*100).toFixed(2).replace(/\.?0+$/,"")
+      : val??""
+    return(
+      <div key={key}>
+        <label style={s.label}>{label}</label>
+        {type==="percent"
+          ? <input
+              key={key+"_"+String(val)}
+              type="text"
+              style={{...s.input,borderColor:val==null?QB.red:QB.borderInput,
+                      background:val==null?"#FEF2F2":"#fff"}}
+              defaultValue={display}
+              placeholder="e.g. 10"
+              onBlur={e=>{
+                const v=parseFloat(e.target.value);
+                if(!isNaN(v)) setAnnexExtracted(prev=>({...prev,[key]:v/100}));
+              }}/>
+          : <input
+              type={type==="date"?"date":"text"}
+              style={{...s.input,borderColor:val==null?QB.red:QB.borderInput,
+                      background:val==null?"#FEF2F2":"#fff"}}
+              value={display}
+              onChange={e=>{
+                let v=e.target.value;
+                if(type==="number") v=parseFloat(v)||0;
+                setAnnexExtracted(prev=>({...prev,[key]:v}));
+              }}/>
+        }
+        {val==null&&<div style={{fontSize:10,color:QB.red}}>⚠ لم يُذكر — يرجى التعبئة</div>}
+      </div>
+    );
+  })}                <div style={{marginTop:14,paddingTop:12,borderTop:`1px solid ${QB.borderLight}`,display:"flex",gap:8}}>
                   <button style={{...s.btnP,padding:"9px 24px",fontSize:13}}
                     disabled={annexGenerating||!d.tenant_name||!d.lease_start||!d.num_years||!d.base_monthly}
                     onClick={async()=>{
