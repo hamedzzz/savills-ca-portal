@@ -1274,20 +1274,20 @@ return(
 
           {/* Instructions */}
           {!annexExtracted&&<div style={{...s.card,background:QB.bgSidebar}}>
-            <div style={{fontSize:12,fontWeight:600,color:QB.textSecondary,marginBottom:10}}>💡 تعليمات الاستخدام</div>
-            <div style={{fontSize:12,color:QB.textMuted,lineHeight:1.8}}>
-              <div>• اكتب تفاصيل الصفقة بأي لغة أو شكل — عربي أو إنجليزي أو مزيج</div>
-<div>• اذكر: اسم المستأجر، رقم الوحدة، المشروع، تاريخ البداية، المدة، الإيجار، التصاعد، رسوم الخدمات</div>
-              <div>• لو فيه سنة Revenue Share اذكرها</div>
-              <div>• الـ VAT الافتراضي: 1% على الإيجار (قانون 157/2025) و14% على رسوم الخدمات</div>
-              <div>• بعد الاستخراج راجع الأرقام وعدّل أي حاجة غلط قبل التوليد</div>
-            </div>
-          </div>
-        </div>}
-        {/* ══════════════════════════════════════════════════════════════════
-            DOCUMENTATION TAB
-        ══════════════════════════════════════════════════════════════════ */}
-        {(tab==="doc-sop"||tab==="doc-guide")&&<div>
+   <div style={{fontSize:12,fontWeight:600,color:QB.textSecondary,marginBottom:10}}>💡 تعليمات الاستخدام</div>
+             <div style={{fontSize:12,color:QB.textMuted,lineHeight:1.8}}>
+               <div>• اكتب تفاصيل الصفقة بأي لغة أو شكل — عربي أو إنجليزي أو مزيج</div>
+               <div>• اذكر: اسم المستأجر، رقم الوحدة، المشروع، تاريخ البداية، المدة، الإيجار، التصاعد، رسوم الخدمات</div>
+               <div>• لو فيه سنة Revenue Share اذكرها</div>
+               <div>• الـ VAT الافتراضي: 1% على الإيجار (قانون 157/2025) و14% على رسوم الخدمات</div>
+               <div>• بعد الاستخراج راجع الأرقام وعدّل أي حاجة غلط قبل التوليد</div>
+             </div>
+           </div>
+         </div>)}
+         {/* ══════════════════════════════════════════════════════════════════
+             DOCUMENTATION TAB
+         ══════════════════════════════════════════════════════════════════ */}
+         {(tab==="doc-sop"||tab==="doc-guide")&&<div>
           {/* SOP sub-tab */}
           {tab==="doc-sop"&&<div>
             {/* Upload - admin only */}
