@@ -1842,8 +1842,7 @@ Deal description:
                                    lambda m: m.group(1).replace('\n', '\\n').replace('\r', '\\r'), 
                                    content, flags=re.DOTALL)
             extracted = json.loads(fixed_content)
-        except:
-            except:
+            except Exception as e:
             # Try to salvage truncated JSON by closing open braces
             try:
                 salvage = content.strip().rstrip(',').rstrip()
