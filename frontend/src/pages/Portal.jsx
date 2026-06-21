@@ -1142,7 +1142,7 @@ export default function Portal(){
 {/* ══════════════════════════════════════════════════════════════════
             FINANCIAL ANNEX TAB
         ══════════════════════════════════════════════════════════════════ */}
-        {tab === "annex" && (
+           {tab === "annex" && (
           <div style={{ maxWidth: 900 }}>
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 15, fontWeight: 600, color: QB.textPrimary, marginBottom: 4 }}>Financial Annex Generator</div>
@@ -1153,10 +1153,10 @@ export default function Portal(){
             <div style={{ ...s.card, marginBottom: 16 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: QB.textPrimary, marginBottom: 10 }}>
                 <span style={{ background: QB.blue, color: "#fff", borderRadius: "50%", width: 22, height: 22, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, marginRight: 8 }}>1</span>
-                أدخل تفاصيل الصفقة
+                Enter Contract details
               </div>
               <textarea style={{ ...s.input, width: "100%", minHeight: 160, resize: "vertical", fontSize: 13, lineHeight: 1.7, fontFamily: QB.fontFamily }}
-                placeholder={"مثال:\nالمستأجر: سيلانترو\nالوحدة: F-01\nالمشروع: Giza Zoo Commercial Destination\nبداية العقد: نوفمبر 2025\nمدة العقد: 5 سنوات\nإيجار شهري السنة الأولى: 150,000 جنيه\nتصاعد سنوي: 10%\nرسوم خدمات شهرية: 30,000 جنيه\nسنة Revenue Share: لا\nرسوم تسويق: 2%"}
+                placeholder={"Example:\nTenant: Cilantro\nUnit: F-01\nProject: Giza Zoo Commercial Destination\nLease Start: Nov 2025\nContract Period: 5 Years\nMonthly Rent Year 1: 150,000 EGP\nAnnual Escalation: 10%\nMonthly Service Charge: 30,000 EGP\nRevenue Share Years: 0\nMarketing Rate: 2%"}
                 value={annexText} onChange={e => setAnnexText(e.target.value)} />
               <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                 <button style={{ ...s.btnP, padding: "8px 20px" }} disabled={!annexText.trim() || annexLoading}
@@ -1165,13 +1165,13 @@ export default function Portal(){
                     try {
                       const d = await apiFetch("/annex/extract", { method: "POST", body: JSON.stringify({ text: annexText }) });
                       if (d?.data) setAnnexExtracted(d.data);
-                      else setAnnexError("فشل في استخراج البيانات");
-                    } catch (e) { setAnnexError(e.message || "حدث خطأ"); }
+                      else setAnnexError("Failed to extract data");
+                    } catch (e) { setAnnexError(e.message || "An error occurred"); }
                     finally { setAnnexLoading(false); }
                   }}>
-                  {annexLoading ? "⏳ جاري التحليل..." : "🤖 استخرج البيانات بالـ AI"}
+                  {annexLoading ? "⏳ Analyzing..." : "🤖 Extract Data with AI"}
                 </button>
-                {annexExtracted && <button style={{ ...s.btnS, padding: "8px 16px" }} onClick={() => setAnnexExtracted(null)}>مسح</button>}
+                {annexExtracted && <button style={{ ...s.btnS, padding: "8px 16px" }} onClick={() => setAnnexExtracted(null)}>Clear</button>}
               </div>
               {annexError && <div style={{ marginTop: 8, padding: "8px 12px", background: "#FEF2F2", color: "#C80C0F", borderRadius: QB.radiusMD, fontSize: 12 }}>{annexError}</div>}
             </div>
@@ -1180,27 +1180,27 @@ export default function Portal(){
             {annexExtracted && (() => {
               const d = annexExtracted;
               const fields = [
-                { key: "tenant_name", label: "اسم المستأجر", type: "text" },
-                { key: "unit", label: "رقم الوحدة", type: "text" },
-                { key: "project", label: "المشروع", type: "text" },
-                { key: "lease_start", label: "تاريخ بداية العقد", type: "date" },
-                { key: "num_years", label: "مدة العقد (سنوات)", type: "number" },
-                { key: "base_monthly", label: "الإيجار الشهري - السنة الأولى (EGP)", type: "number" },
-                { key: "escalation", label: "نسبة التصاعد السنوي", type: "percent" },
-                { key: "sc_monthly_y1", label: "رسوم الخدمات الشهرية - السنة الأولى (EGP)", type: "number" },
-                { key: "revenue_share_years", label: "عدد سنوات Revenue Share", type: "number" },
-                { key: "vat_rent", label: "ضريبة القيمة المضافة على الإيجار", type: "percent" },
-                { key: "vat_sc", label: "ضريبة القيمة المضافة على رسوم الخدمات", type: "percent" },
-                { key: "marketing_rate", label: "رسوم التسويق (% من الإيجار السنوي — اتركه 0 لو مش موجود)", type: "percent" },
+                { key: "tenant_name", label: "Tenant Name", type: "text" },
+                { key: "unit", label: "Unit No.", type: "text" },
+                { key: "project", label: "Project", type: "text" },
+                { key: "lease_start", label: "Lease Start Date", type: "date" },
+                { key: "num_years", label: "Lease Term (Years)", type: "number" },
+                { key: "base_monthly", label: "Monthly Rent - Year 1 (EGP)", type: "number" },
+                { key: "escalation", label: "Annual Escalation Rate", type: "percent" },
+                { key: "sc_monthly_y1", label: "Monthly Service Charge - Year 1 (EGP)", type: "number" },
+                { key: "revenue_share_years", label: "Revenue Share Years", type: "number" },
+                { key: "vat_rent", label: "VAT on Rent", type: "percent" },
+                { key: "vat_sc", label: "VAT on Service Charge", type: "percent" },
+                { key: "marketing_rate", label: "Marketing Rate (% of annual rent — leave 0 if none)", type: "percent" },
               ];
               return (
                 <div style={{ ...s.card, marginBottom: 16 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: QB.textPrimary, marginBottom: 14 }}>
                     <span style={{ background: QB.blue, color: "#fff", borderRadius: "50%", width: 22, height: 22, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, marginRight: 8 }}>2</span>
-                    راجع وعدّل البيانات المستخرجة
+                    Review & Edit Extracted Data
                   </div>
                   {d.notes && <div style={{ marginBottom: 12, padding: "8px 12px", background: QB.blueLight, borderRadius: QB.radiusMD, fontSize: 12, color: QB.blue }}>
-                    💡 ملاحظة الـ AI: {d.notes}
+                    💡 AI Note: {d.notes}
                   </div>}
                   
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -1240,7 +1240,7 @@ export default function Portal(){
                                   }
                                 }} />
                           }
-                          {val == null && <div style={{ fontSize: 10, color: QB.red }}>⚠ لم يُذكر — يرجى التعبئة</div>}
+                          {val == null && <div style={{ fontSize: 10, color: QB.red }}>⚠ Not mentioned — please fill in</div>}
                         </div>
                       );
                     })}
@@ -1260,12 +1260,12 @@ export default function Portal(){
                             const url = URL.createObjectURL(blob);
                             const a = document.createElement("a"); a.href = url; a.download = res.filename;
                             document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-                            flash("✅ تم توليد الملحق المالي بنجاح");
-                          } else setAnnexError(res?.detail || "فشل في توليد الملف");
-                        } catch (e) { setAnnexError(e.message || "حدث خطأ"); }
+                            flash("✅ Financial Annex generated successfully");
+                          } else setAnnexError(res?.detail || "Failed to generate file");
+                        } catch (e) { setAnnexError(e.message || "An error occurred"); }
                         finally { setAnnexGenerating(false); }
                       }}>
-                      {annexGenerating ? "⏳ جاري التوليد..." : "📥 توليد Excel"}
+                      {annexGenerating ? "⏳ Generating..." : "📥 Generate Excel"}
                     </button>
                   </div>
                   {annexError && <div style={{ marginTop: 8, padding: "8px 12px", background: "#FEF2F2", color: "#C80C0F", borderRadius: QB.radiusMD, fontSize: 12 }}>{annexError}</div>}
@@ -1276,13 +1276,13 @@ export default function Portal(){
             {/* Instructions */}
             {!annexExtracted && (
               <div style={{ ...s.card, background: QB.bgSidebar }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: QB.textSecondary, marginBottom: 10 }}>💡 تعليمات الاستخدام</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: QB.textSecondary, marginBottom: 10 }}>💡 How to use</div>
                 <div style={{ fontSize: 12, color: QB.textMuted, lineHeight: 1.8 }}>
-                  <div>• اكتب تفاصيل الصفقة بأي لغة أو شكل — عربي أو إنجليزي أو مزيج</div>
-                  <div>• اذكر: اسم المستأجر، رقم الوحدة، المشروع، تاريخ البداية، المدة، الإيجار، التصاعد، رسوم الخدمات</div>
-                  <div>• لو فيه سنة Revenue Share اذكرها</div>
-                  <div>• الـ VAT الافتراضي: 1% على الإيجار (قانون 157/2025) و14% على رسوم الخدمات</div>
-                  <div>• بعد الاستخراج راجع الأرقام وعدّل أي حاجة غلط قبل التوليد</div>
+                  <div>• Enter deal details in any language or format — Arabic, English, or mixed</div>
+                  <div>• Include: tenant name, unit no., project, start date, term, rent, escalation, service charges</div>
+                  <div>• Mention Revenue Share years if applicable</div>
+                  <div>• Default VAT: 1% on rent (Law 157/2025) and 14% on service charges</div>
+                  <div>• After extraction, review and correct any figures before generating</div>
                 </div>
               </div>
             )}
