@@ -1146,7 +1146,7 @@ export default function Portal(){
           <div style={{ maxWidth: 900 }}>
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 15, fontWeight: 600, color: QB.textPrimary, marginBottom: 4 }}>Financial Annex Generator</div>
-              <div style={{ fontSize: 13, color: QB.textMuted }}>اكتب تفاصيل الصفقة بأي شكل — الـ AI هيستخرج الأرقام ويولد الملف</div>
+              <div style={{ fontSize: 13, color: QB.textMuted }}>The AI Will extract the info from any input</div>
             </div>
 
             {/* Step 1: Input */}
