@@ -54,7 +54,7 @@ def build_annex(data: dict, output_path: str):
         yr_start = ls + relativedelta(years=y)
         yr_end   = ls + relativedelta(years=y+1) - relativedelta(days=1)
         is_rs    = (y < rs_yr)
-        rent_monthly = 0.0 if is_rs else bm * ((1 + esc) ** max(0, y - rs_yr))
+        rent_monthly = 0.0 if is_rs else bm * ((1 + esc) ** (y - 1))
         sc_monthly   = scm1 * ((1 + sc_esc) ** max(0, y - rs_yr))
         mkt_annual  = round(rent_monthly * 12 * mkt_rate, 2)
         years.append({
