@@ -1288,9 +1288,7 @@ export default function Portal(){
             )}
           </div>
         )}
-        ══════════════════════════════════════════════════════════════════
-            DOCUMENTATION TAB
-        ══════════════════════════════════════════════════════════════════ */}
+
         {(tab==="doc-sop"||tab==="doc-guide")&&<div>
           {/* SOP sub-tab */}
           {tab==="doc-sop"&&<div>
