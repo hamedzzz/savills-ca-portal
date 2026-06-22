@@ -1043,7 +1043,7 @@ export default function Portal(){
         {tab==="welcome"&&(()=>{
           // Calculate KPIs based on role
           const myProps = isAdmin ? properties : properties.filter(p=>
-            myAccess.property_ids?.length===0 || myAccess.property_ids?.includes(p.id)
+            !myAccess || myAccess.includes(p.id)
           );
           const totalLeases = myProps.reduce((a,p)=>{
             const rrs=rentRolls[p.id]||[];
