@@ -96,6 +96,7 @@ export default function Portal(){
   const[annexError,setAnnexError]=useState("");
   const[sopVersion,setSopVersion]=useState("");
   const[sopDesc,setSopDesc]=useState("");
+  const[sopDeleteConfirm,setSopDeleteConfirm]=useState(null);
   const[properties,setProperties]=useState([]);
   const[archivedProps,setArchivedProps]=useState([]);
   const[showArchived,setShowArchived]=useState(false);
@@ -1363,11 +1364,18 @@ export default function Portal(){
                                 const a=document.createElement("a"); a.href=url; a.download=doc.filename;
                                 document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
                               }}>⬇ Download</button>
-                              {isAdmin&&<button style={{...s.btnDanger,padding:"4px 10px",fontSize:11}} onClick={async()=>{
-                                if(!confirm("Delete this document?")) return;
-                                await apiFetch(`/sop/${doc.id}`,{method:"DELETE"});
-                                flash("Document deleted"); loadSopDocs();
-                              }}>✕</button>}
+                              {isAdmin&&(sopDeleteConfirm===doc.id
+                                ?<div style={{display:"flex",gap:4,alignItems:"center"}}>
+                                    <span style={{fontSize:11,color:"#c0392b"}}>Delete?</span>
+                                    <button style={{...s.btnDanger,padding:"2px 8px",fontSize:11}} onClick={async()=>{
+                                      setSopDeleteConfirm(null);
+                                      await apiFetch(`/sop/${doc.id}`,{method:"DELETE"});
+                                      flash("Document deleted"); loadSopDocs();
+                                    }}>Yes</button>
+                                    <button style={{...s.btn,padding:"2px 8px",fontSize:11}} onClick={()=>setSopDeleteConfirm(null)}>No</button>
+                                  </div>
+                                :<button style={{...s.btnDanger,padding:"4px 10px",fontSize:11}} onClick={()=>setSopDeleteConfirm(doc.id)}>✕</button>
+                              )}
                             </div>
                           </td>
                         </tr>
