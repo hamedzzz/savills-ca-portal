@@ -306,6 +306,7 @@ def init_db():
             (section, title, content, order))
     safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS document_type TEXT DEFAULT ''")
     safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS document_no TEXT DEFAULT ''")
+    safe_exec(c, conn, "ALTER TABLE sop_documents ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE")
     conn.commit()
 
     default_settings = [
