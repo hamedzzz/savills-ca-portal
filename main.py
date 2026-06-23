@@ -1649,6 +1649,12 @@ async def upload_sop(
 def list_sop_documents(current_user=Depends(get_current_user)):
     conn = get_db(); c = conn.cursor()
     try:
+        # Ensure is_active column exists (handles tables created before this column was added)
+        try:
+            c.execute("ALTER TABLE sop_documents ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE")
+            conn.commit()
+        except Exception:
+            conn.rollback()
         c.execute("""SELECT id, filename, version, description, file_size, upload_date,
                             u.full_name as uploaded_by_name, is_active
                      FROM sop_documents s JOIN ca_users u ON s.uploaded_by=u.id

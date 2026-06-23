@@ -493,7 +493,7 @@ export default function Portal(){
     try{
       const d=await apiFetch("/sop/documents");
       if(d) setSopDocs(d);
-    }catch(e){console.error("loadSopDocs error:",e);}
+    }catch(e){console.error("loadSopDocs error:",e);flash("Could not load SOP documents: "+e.message,"error");}
   };
 
   const loadGuide=async()=>{
