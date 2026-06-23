@@ -1655,8 +1655,8 @@ def list_sop_documents(current_user=Depends(get_current_user)):
             conn.commit()
         except Exception:
             conn.rollback()
-        c.execute("""SELECT id, filename, version, description, file_size, upload_date,
-                            u.full_name as uploaded_by_name, is_active
+        c.execute("""SELECT s.id, s.filename, s.version, s.description, s.file_size, s.upload_date,
+                            u.full_name as uploaded_by_name, s.is_active
                      FROM sop_documents s JOIN ca_users u ON s.uploaded_by=u.id
                      WHERE s.is_active=TRUE ORDER BY s.upload_date DESC""")
         rows = [dict(r) for r in c.fetchall()]
