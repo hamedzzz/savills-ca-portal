@@ -1953,6 +1953,99 @@ export default function Portal(){
               <button style={s.btnS} onClick={()=>{setEditingLog(null);setCollView("log");}}>Cancel</button>
             </div>
           </div>}
+
+          {/* ── Import Excel tab ── */}
+          {collView==="import"&&isAdmin&&<div>
+            <div style={s.card}>
+              <div style={{...s.cardTitle,marginBottom:4}}>Import Monthly Collection Excel</div>
+              <div style={{fontSize:12,color:QB.textSecondary,marginBottom:20}}>
+                Upload your monthly Collection Update Excel file. The portal will preview the data before committing.
+                Make sure the file is saved from Excel (not just exported) so all VLOOKUP columns are resolved.
+              </div>
+              {!importPreview&&<label style={{display:"inline-flex",alignItems:"center",gap:8,cursor:importLoading?"not-allowed":"pointer",padding:"10px 20px",background:QB.blue,color:"#fff",borderRadius:QB.radius,fontSize:13,fontWeight:600,opacity:importLoading?0.6:1}}>
+                {importLoading?"Analysing...":"📂 Select Excel File"}
+                <input type="file" accept=".xlsx,.xls" style={{display:"none"}} disabled={importLoading} onChange={async e=>{
+                  const file=e.target.files[0]; if(!file) return;
+                  setImportFile(file); setImportLoading(true);
+                  const fd=new FormData(); fd.append("file",file);
+                  try{
+                    const token=localStorage.getItem("ca_token");
+                    const APIURL=import.meta.env.VITE_API_URL||"http://localhost:8001";
+                    const res=await fetch(`${APIURL}/collection/import-excel/preview`,{method:"POST",headers:{Authorization:`Bearer ${token}`},body:fd});
+                    const r=await res.json();
+                    if(!res.ok) throw new Error(r.detail||"Preview failed");
+                    setImportPreview(r);
+                  }catch(ex){flash(ex.message,"error");setImportFile(null);}
+                  finally{setImportLoading(false);e.target.value="";}
+                }}/>
+              </label>}
+              {importPreview&&<div>
+                <div style={{fontSize:12,color:QB.textMuted,marginBottom:12}}>File: <strong>{importPreview.filename}</strong></div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
+                  {[{label:"Total Rows",value:importPreview.total_rows},{label:"Matched Rows",value:importPreview.matched_rows},{label:"Months",value:importPreview.months.join(", ")||"—"}].map(({label,value})=>(
+                    <div key={label} style={{padding:"12px 16px",background:QB.bgSidebar,borderRadius:QB.radius,textAlign:"center"}}>
+                      <div style={{fontSize:11,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".06em",marginBottom:4}}>{label}</div>
+                      <div style={{fontSize:18,fontWeight:700,color:QB.textPrimary}}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+                {importPreview.unmatched_brands.length>0&&<div style={{padding:"10px 14px",background:"#fff8e1",border:"1px solid #ffe082",borderRadius:QB.radius,fontSize:12,color:"#7c5200",marginBottom:16}}>
+                  <strong>Unmatched brands</strong> (stored without property link): {importPreview.unmatched_brands.join(", ")}
+                </div>}
+                <div style={{overflowX:"auto",marginBottom:20}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                    <thead><tr style={{background:QB.bgSidebar}}>{["Brand","Rows","Total (EGP)","Matched Property"].map(h=><th key={h} style={{...s.th,textAlign:"left"}}>{h}</th>)}</tr></thead>
+                    <tbody>{importPreview.by_brand.map(b=>(
+                      <tr key={b.brand}>
+                        <td style={s.td}>{b.brand||"—"}</td>
+                        <td style={s.td}>{b.count}</td>
+                        <td style={s.td}>{b.total.toLocaleString()}</td>
+                        <td style={s.td}>{b.property_id?<span style={{color:QB.green,fontWeight:600}}>{properties.find(p=>p.id===b.property_id)?.name||`#${b.property_id}`}</span>:<span style={{color:QB.amber}}>Not matched</span>}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+                <div style={{display:"flex",gap:10}}>
+                  <button style={{...s.btnP,padding:"9px 22px",background:QB.green}} disabled={importLoading} onClick={async()=>{
+                    if(!importFile){flash("File no longer available, please re-select","error");setImportPreview(null);return;}
+                    setImportLoading(true);
+                    const fd=new FormData(); fd.append("file",importFile);
+                    try{
+                      const token=localStorage.getItem("ca_token");
+                      const APIURL=import.meta.env.VITE_API_URL||"http://localhost:8001";
+                      const res=await fetch(`${APIURL}/collection/import-excel`,{method:"POST",headers:{Authorization:`Bearer ${token}`},body:fd});
+                      const r=await res.json();
+                      if(!res.ok) throw new Error(r.detail||"Import failed");
+                      flash(`Imported ${r.total_rows} rows — ${r.property_months_updated} property-months updated`);
+                      setImportPreview(null); setImportFile(null);
+                      const hist=await apiFetch("/collection/imports"); if(hist) setImportHistory(hist);
+                      const logs=await apiFetch("/collection-logs"); if(logs) setCollLogs(logs);
+                    }catch(ex){flash(ex.message,"error");}
+                    finally{setImportLoading(false);}
+                  }}>{importLoading?"Importing...":"✓ Confirm Import"}</button>
+                  <button style={{...s.btnS,padding:"9px 16px"}} onClick={()=>{setImportPreview(null);setImportFile(null);}}>Cancel</button>
+                </div>
+              </div>}
+            </div>
+            <div style={s.card}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                <div style={s.cardTitle}>Import History</div>
+                <button style={{...s.btnS,fontSize:11,padding:"4px 12px"}} onClick={async()=>{
+                  const h=await apiFetch("/collection/imports"); if(h) setImportHistory(h);
+                  setShowImportHistory(v=>!v);
+                }}>{showImportHistory?"Hide":"Show"}</button>
+              </div>
+              {showImportHistory&&(importHistory.length===0
+                ?<div style={{fontSize:12,color:QB.textMuted,textAlign:"center",padding:16}}>No imports yet</div>
+                :<table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                  <thead><tr style={{background:QB.bgSidebar}}>{["File","Rows","Matched","Imported by","Date"].map(h=><th key={h} style={{...s.th,textAlign:"left"}}>{h}</th>)}</tr></thead>
+                  <tbody>{importHistory.map(h=>(
+                    <tr key={h.id}><td style={s.td}>{h.filename}</td><td style={s.td}>{h.total_rows}</td><td style={s.td}>{h.matched_rows}</td><td style={s.td}>{h.imported_by_name}</td><td style={s.td}>{new Date(h.imported_at).toLocaleDateString()}</td></tr>
+                  ))}</tbody>
+                </table>
+              )}
+            </div>
+          </div>}
         </>}
 
         {/* ══════════════════════════════════════════════════════════════════
@@ -2051,127 +2144,6 @@ export default function Portal(){
                 </div>
               </div>
             ))}
-          </div>}
-
-          {/* ── Import Excel tab ── */}
-          {collView==="import"&&isAdmin&&<div>
-            <div style={s.card}>
-              <div style={{...s.cardTitle,marginBottom:4}}>Import Monthly Collection Excel</div>
-              <div style={{fontSize:12,color:QB.textSecondary,marginBottom:20}}>
-                Upload your monthly Collection Update Excel file. The portal will preview the data before committing.
-                Make sure the file is saved from Excel (not just exported) so all VLOOKUP columns are resolved.
-              </div>
-
-              {/* Step 1: Select file */}
-              {!importPreview&&<label style={{display:"inline-flex",alignItems:"center",gap:8,cursor:importLoading?"not-allowed":"pointer",padding:"10px 20px",background:QB.blue,color:"#fff",borderRadius:QB.radius,fontSize:13,fontWeight:600,opacity:importLoading?0.6:1}}>
-                {importLoading?"Analysing...":"📂 Select Excel File"}
-                <input type="file" accept=".xlsx,.xls" style={{display:"none"}} disabled={importLoading} onChange={async e=>{
-                  const file=e.target.files[0]; if(!file) return;
-                  setImportFile(file);
-                  setImportLoading(true);
-                  const fd=new FormData(); fd.append("file",file);
-                  try{
-                    const token=localStorage.getItem("ca_token");
-                    const APIURL=import.meta.env.VITE_API_URL||"http://localhost:8001";
-                    const res=await fetch(`${APIURL}/collection/import-excel/preview`,{method:"POST",headers:{Authorization:`Bearer ${token}`},body:fd});
-                    const r=await res.json();
-                    if(!res.ok) throw new Error(r.detail||"Preview failed");
-                    setImportPreview(r);
-                  }catch(ex){flash(ex.message,"error");setImportFile(null);}
-                  finally{setImportLoading(false);e.target.value="";}
-                }}/>
-              </label>}
-
-              {/* Step 2: Preview */}
-              {importPreview&&<div>
-                <div style={{fontSize:12,color:QB.textMuted,marginBottom:12}}>File: <strong>{importPreview.filename}</strong></div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
-                  {[
-                    {label:"Total Rows",value:importPreview.total_rows},
-                    {label:"Matched Rows",value:importPreview.matched_rows},
-                    {label:"Months",value:importPreview.months.join(", ")||"—"},
-                  ].map(({label,value})=>(
-                    <div key={label} style={{padding:"12px 16px",background:QB.bgSidebar,borderRadius:QB.radius,textAlign:"center"}}>
-                      <div style={{fontSize:11,fontWeight:600,color:QB.textMuted,textTransform:"uppercase",letterSpacing:".06em",marginBottom:4}}>{label}</div>
-                      <div style={{fontSize:18,fontWeight:700,color:QB.textPrimary}}>{value}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {importPreview.unmatched_brands.length>0&&<div style={{padding:"10px 14px",background:"#fff8e1",border:"1px solid #ffe082",borderRadius:QB.radius,fontSize:12,color:"#7c5200",marginBottom:16}}>
-                  <strong>Unmatched brands</strong> (stored without property link): {importPreview.unmatched_brands.join(", ")}
-                </div>}
-
-                <div style={{overflowX:"auto",marginBottom:20}}>
-                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-                    <thead><tr style={{background:QB.bgSidebar}}>
-                      {["Brand","Rows","Total (EGP)","Matched Property"].map(h=><th key={h} style={{...s.th,textAlign:"left"}}>{h}</th>)}
-                    </tr></thead>
-                    <tbody>{importPreview.by_brand.map(b=>(
-                      <tr key={b.brand}>
-                        <td style={s.td}>{b.brand||"—"}</td>
-                        <td style={s.td}>{b.count}</td>
-                        <td style={s.td}>{b.total.toLocaleString()}</td>
-                        <td style={s.td}>
-                          {b.property_id
-                            ?<span style={{color:QB.green,fontWeight:600}}>{properties.find(p=>p.id===b.property_id)?.name||`#${b.property_id}`}</span>
-                            :<span style={{color:QB.amber}}>Not matched</span>}
-                        </td>
-                      </tr>
-                    ))}</tbody>
-                  </table>
-                </div>
-
-                <div style={{display:"flex",gap:10}}>
-                  <button style={{...s.btnP,padding:"9px 22px",background:QB.green}} disabled={importLoading} onClick={async()=>{
-                    if(!importFile){flash("File no longer available, please re-select","error");setImportPreview(null);return;}
-                    setImportLoading(true);
-                    const fd=new FormData(); fd.append("file",importFile);
-                    try{
-                      const token=localStorage.getItem("ca_token");
-                      const APIURL=import.meta.env.VITE_API_URL||"http://localhost:8001";
-                      const res=await fetch(`${APIURL}/collection/import-excel`,{method:"POST",headers:{Authorization:`Bearer ${token}`},body:fd});
-                      const r=await res.json();
-                      if(!res.ok) throw new Error(r.detail||"Import failed");
-                      flash(`Imported ${r.total_rows} rows — ${r.property_months_updated} property-months updated`);
-                      setImportPreview(null); setImportFile(null);
-                      const hist=await apiFetch("/collection/imports"); if(hist) setImportHistory(hist);
-                      const logs=await apiFetch("/collection-logs"); if(logs) setCollLogs(logs);
-                    }catch(ex){flash(ex.message,"error");}
-                    finally{setImportLoading(false);}
-                  }}>{importLoading?"Importing...":"✓ Confirm Import"}</button>
-                  <button style={{...s.btnS,padding:"9px 16px"}} onClick={()=>{setImportPreview(null);setImportFile(null);}}>Cancel</button>
-                </div>
-              </div>}
-            </div>
-
-            {/* Import history */}
-            <div style={s.card}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-                <div style={s.cardTitle}>Import History</div>
-                <button style={{...s.btnS,fontSize:11,padding:"4px 12px"}} onClick={async()=>{
-                  const h=await apiFetch("/collection/imports"); if(h) setImportHistory(h);
-                  setShowImportHistory(v=>!v);
-                }}>{showImportHistory?"Hide":"Show"}</button>
-              </div>
-              {showImportHistory&&(importHistory.length===0
-                ?<div style={{fontSize:12,color:QB.textMuted,textAlign:"center",padding:16}}>No imports yet</div>
-                :<table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-                  <thead><tr style={{background:QB.bgSidebar}}>
-                    {["File","Rows","Matched","Imported by","Date"].map(h=><th key={h} style={{...s.th,textAlign:"left"}}>{h}</th>)}
-                  </tr></thead>
-                  <tbody>{importHistory.map(h=>(
-                    <tr key={h.id}>
-                      <td style={s.td}>{h.filename}</td>
-                      <td style={s.td}>{h.total_rows}</td>
-                      <td style={s.td}>{h.matched_rows}</td>
-                      <td style={s.td}>{h.imported_by_name}</td>
-                      <td style={s.td}>{new Date(h.imported_at).toLocaleDateString()}</td>
-                    </tr>
-                  ))}</tbody>
-                </table>
-              )}
-            </div>
           </div>}
         </>}
 
