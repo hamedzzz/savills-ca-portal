@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 import os, json, io, httpx, jwt, bcrypt, psycopg2, psycopg2.extras, random, string, base64
 from datetime import datetime, timedelta
+import openpyxl
 
 app = FastAPI()
 ALLOWED_ORIGINS = [
@@ -202,6 +203,37 @@ def init_db():
         uploaded_by INTEGER NOT NULL REFERENCES ca_users(id),
         upload_date TIMESTAMP DEFAULT NOW(),
         is_active BOOLEAN DEFAULT TRUE
+    )""")
+
+    c.execute("""CREATE TABLE IF NOT EXISTS collection_imports (
+        id SERIAL PRIMARY KEY,
+        filename TEXT NOT NULL,
+        total_rows INTEGER DEFAULT 0,
+        matched_rows INTEGER DEFAULT 0,
+        imported_by INTEGER NOT NULL REFERENCES ca_users(id),
+        imported_at TIMESTAMP DEFAULT NOW()
+    )""")
+
+    c.execute("""CREATE TABLE IF NOT EXISTS collection_entries (
+        id SERIAL PRIMARY KEY,
+        import_id INTEGER REFERENCES collection_imports(id),
+        entry_date DATE,
+        cheque_number TEXT DEFAULT '',
+        customer_name TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        nature TEXT DEFAULT '',
+        amount NUMERIC DEFAULT 0,
+        account TEXT DEFAULT '',
+        bank_name TEXT DEFAULT '',
+        brand TEXT DEFAULT '',
+        location TEXT DEFAULT '',
+        entered_amount NUMERIC,
+        rec_status TEXT DEFAULT '',
+        collection_purpose TEXT DEFAULT '',
+        lease_type TEXT DEFAULT '',
+        property_id INTEGER REFERENCES properties(id),
+        imported_by INTEGER REFERENCES ca_users(id),
+        imported_at TIMESTAMP DEFAULT NOW()
     )""")
 
     c.execute("""CREATE TABLE IF NOT EXISTS portal_guide (
@@ -1683,6 +1715,206 @@ def delete_sop(doc_id: int, admin=Depends(require_admin)):
     c.execute("UPDATE sop_documents SET is_active=FALSE WHERE id=%s", (doc_id,))
     log_activity(conn, admin["id"], "deleted SOP", "document", str(doc_id))
     conn.commit(); conn.close(); return {"ok": True}
+
+# ── Collection Excel Import ───────────────────────────────────────────────────
+
+def _parse_collection_excel(content: bytes):
+    """Parse Excel bytes; return (headers_ok, rows_list, error_msg)."""
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+        ws = wb.active
+    except Exception as e:
+        return False, [], f"Cannot open file: {e}"
+
+    expected = ["Date", "Cheque Number", "Customer Name"]
+    first_row = [str(cell.value).strip() if cell.value else "" for cell in ws[1]]
+    if not all(h in first_row for h in expected):
+        return False, [], "File does not match expected Collection Update format (missing Date/Cheque Number/Customer Name columns)"
+
+    col = {v: i for i, v in enumerate(first_row)}
+    rows = []
+    for r in ws.iter_rows(min_row=2, values_only=True):
+        if not any(r):
+            continue
+        def _get(name, default=""):
+            idx = col.get(name)
+            if idx is None: return default
+            v = r[idx]
+            if v is None: return default
+            if isinstance(v, str) and v.startswith("="): return default
+            return v
+
+        raw_date = _get("Date")
+        if isinstance(raw_date, datetime):
+            entry_date = raw_date.date()
+        elif isinstance(raw_date, str) and raw_date:
+            try: entry_date = datetime.strptime(raw_date[:10], "%Y-%m-%d").date()
+            except: entry_date = None
+        else:
+            entry_date = None
+
+        try: amount = float(_get("Amount", 0) or 0)
+        except: amount = 0.0
+        try: entered_amount = float(_get("Entered Amount", 0) or 0) or None
+        except: entered_amount = None
+
+        rows.append({
+            "entry_date": entry_date,
+            "cheque_number": str(_get("Cheque Number"))[:100],
+            "customer_name": str(_get("Customer Name"))[:255],
+            "description": str(_get("Description"))[:500],
+            "nature": str(_get("Nature"))[:50],
+            "amount": amount,
+            "account": str(_get("Account"))[:100],
+            "bank_name": str(_get("Bank Name"))[:100],
+            "brand": str(_get("Brand"))[:100],
+            "location": str(_get("Location"))[:100],
+            "entered_amount": entered_amount,
+            "rec_status": str(_get("Rec. Status"))[:50],
+            "collection_purpose": str(_get("Collection Purpose"))[:100],
+            "lease_type": str(_get("Lease Type"))[:100],
+        })
+    return True, rows, None
+
+
+def _match_properties(rows, conn):
+    """Return dict brand->property_id and list of unmatched brand names."""
+    c = conn.cursor()
+    c.execute("SELECT id, name FROM properties WHERE is_active=TRUE")
+    props = {r["name"].lower().strip(): r["id"] for r in c.fetchall()}
+
+    brand_map = {}
+    for row in rows:
+        brand = row["brand"].strip()
+        if not brand or brand in brand_map:
+            continue
+        # Exact match first
+        pid = props.get(brand.lower())
+        if pid is None:
+            # Substring match
+            for pname, pid2 in props.items():
+                if brand.lower() in pname or pname in brand.lower():
+                    pid = pid2
+                    break
+        brand_map[brand] = pid  # None if unmatched
+    return brand_map
+
+
+@app.post("/collection/import-excel/preview")
+async def preview_collection_import(
+    file: UploadFile = File(...),
+    current_user=Depends(require_admin)
+):
+    content = await file.read()
+    ok, rows, err = _parse_collection_excel(content)
+    if not ok:
+        raise HTTPException(400, err)
+
+    conn = get_db()
+    brand_map = _match_properties(rows, conn)
+    conn.close()
+
+    months = sorted({r["entry_date"].strftime("%Y-%m") for r in rows if r["entry_date"]})
+    matched = sum(1 for r in rows if brand_map.get(r["brand"].strip()) is not None)
+    unmatched_brands = [b for b, pid in brand_map.items() if pid is None]
+
+    by_brand = {}
+    for r in rows:
+        b = r["brand"].strip() or "(no brand)"
+        by_brand.setdefault(b, {"count": 0, "total": 0.0})
+        by_brand[b]["count"] += 1
+        by_brand[b]["total"] += r["amount"]
+
+    return {
+        "filename": file.filename,
+        "total_rows": len(rows),
+        "matched_rows": matched,
+        "months": months,
+        "unmatched_brands": unmatched_brands,
+        "by_brand": [{"brand": k, "count": v["count"], "total": round(v["total"], 2),
+                       "property_id": brand_map.get(k)} for k, v in sorted(by_brand.items())],
+    }
+
+
+@app.post("/collection/import-excel")
+async def import_collection_excel(
+    file: UploadFile = File(...),
+    current_user=Depends(require_admin)
+):
+    content = await file.read()
+    ok, rows, err = _parse_collection_excel(content)
+    if not ok:
+        raise HTTPException(400, err)
+
+    conn = get_db(); c = conn.cursor()
+    brand_map = _match_properties(rows, conn)
+
+    # Create import record
+    c.execute("""INSERT INTO collection_imports (filename, total_rows, matched_rows, imported_by)
+                 VALUES (%s,%s,%s,%s) RETURNING id""",
+              (file.filename, len(rows),
+               sum(1 for r in rows if brand_map.get(r["brand"].strip()) is not None),
+               current_user["id"]))
+    import_id = c.fetchone()["id"]
+
+    # Bulk insert entries
+    for row in rows:
+        pid = brand_map.get(row["brand"].strip())
+        c.execute("""INSERT INTO collection_entries
+            (import_id, entry_date, cheque_number, customer_name, description, nature, amount,
+             account, bank_name, brand, location, entered_amount, rec_status, collection_purpose,
+             lease_type, property_id, imported_by)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (import_id, row["entry_date"], row["cheque_number"], row["customer_name"],
+             row["description"], row["nature"], row["amount"], row["account"],
+             row["bank_name"], row["brand"], row["location"], row["entered_amount"],
+             row["rec_status"], row["collection_purpose"], row["lease_type"],
+             pid, current_user["id"]))
+
+    # Aggregate into collection_logs (upsert per property+month)
+    agg = {}
+    for row in rows:
+        pid = brand_map.get(row["brand"].strip())
+        if pid is None or not row["entry_date"]: continue
+        month = row["entry_date"].strftime("%Y-%m")
+        key = (pid, month)
+        agg.setdefault(key, 0.0)
+        agg[key] += row["amount"]
+
+    upserted = 0
+    for (pid, month), total in agg.items():
+        c.execute("""INSERT INTO collection_logs (property_id, month, total_collection, created_by, updated_by)
+                     VALUES (%s,%s,%s,%s,%s)
+                     ON CONFLICT ON CONSTRAINT collection_logs_property_month
+                     DO UPDATE SET total_collection = collection_logs.total_collection + EXCLUDED.total_collection,
+                                   updated_by = EXCLUDED.updated_by,
+                                   updated_at = NOW()""",
+                  (pid, month, round(total, 2), current_user["id"], current_user["id"]))
+        upserted += 1
+
+    log_activity(conn, current_user["id"], "imported collection Excel", "collection", file.filename,
+                 f"{len(rows)} rows, {upserted} property-months updated")
+    conn.commit(); conn.close()
+
+    months = sorted({r["entry_date"].strftime("%Y-%m") for r in rows if r["entry_date"]})
+    return {
+        "ok": True,
+        "import_id": import_id,
+        "total_rows": len(rows),
+        "property_months_updated": upserted,
+        "months": months,
+    }
+
+
+@app.get("/collection/imports")
+def list_collection_imports(current_user=Depends(require_admin)):
+    conn = get_db(); c = conn.cursor()
+    c.execute("""SELECT ci.*, u.full_name as imported_by_name
+                 FROM collection_imports ci JOIN ca_users u ON ci.imported_by=u.id
+                 ORDER BY ci.imported_at DESC LIMIT 50""")
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close(); return rows
+
 
 @app.get("/guide")
 def get_guide(current_user=Depends(get_current_user)):
