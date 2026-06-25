@@ -140,7 +140,7 @@ export default function Portal(){
   const[newUser,setNewUser]=useState({username:"",full_name:"",email:"",title:"",password:"",role:"viewer"});
   const[newUserAccess,setNewUserAccess]=useState([]);
   const[editUser,setEditUser]=useState(null);
-  const[editUserForm,setEditUserForm]=useState({full_name:"",email:"",title:"",role:"viewer"});
+  const[editUserForm,setEditUserForm]=useState({full_name:"",email:"",title:"",role:"viewer",skip_otp:false});
   const[editUserAccess,setEditUserAccess]=useState([]);
 
   // Properties mgmt
@@ -2220,7 +2220,7 @@ export default function Portal(){
                   <div style={{display:"flex",gap:8}}>
                     <button style={{...s.btnS,padding:"4px 12px",fontSize:12}} onClick={()=>{
                       setEditUser(u);
-                      setEditUserForm({full_name:u.full_name,email:u.email||"",title:u.title||"",role:u.role});
+                      setEditUserForm({full_name:u.full_name,email:u.email||"",title:u.title||"",role:u.role,skip_otp:u.skip_otp||false});
                       const acc=userAccess[u.id]||[];
                       setEditUserAccess(acc);
                     }}>Edit</button>
@@ -3564,6 +3564,15 @@ export default function Portal(){
               <select style={s.input} value={editUserForm.role} onChange={e=>setEditUserForm(p=>({...p,role:e.target.value}))}>
                 <option value="viewer">Viewer</option><option value="editor">Editor</option><option value="admin">Admin</option>
               </select>
+            </div>
+            <div style={{marginBottom:16,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:editUserForm.skip_otp?"#fff8e1":"#f8faff",border:`1.5px solid ${editUserForm.skip_otp?"#ffe082":QB.borderInput}`,borderRadius:QB.radius}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:600,color:QB.textPrimary}}>Skip email OTP</div>
+                <div style={{fontSize:11.5,color:QB.textMuted}}>User logs in with password only — no verification code sent</div>
+              </div>
+              <div onClick={()=>setEditUserForm(p=>({...p,skip_otp:!p.skip_otp}))} style={{width:42,height:24,borderRadius:12,background:editUserForm.skip_otp?"#e6a817":"#cbd5e1",cursor:"pointer",position:"relative",transition:"background .2s",flexShrink:0}}>
+                <div style={{width:18,height:18,borderRadius:9,background:"#fff",position:"absolute",top:3,left:editUserForm.skip_otp?21:3,transition:"left .2s",boxShadow:"0 1px 3px rgba(0,0,0,.2)"}}/>
+              </div>
             </div>
             {editUserForm.role!=="admin"&&<div style={{marginBottom:16}}>
               <label style={s.label}>Property access <span style={{color:QB.textMuted,fontWeight:400}}>(empty = all)</span></label>

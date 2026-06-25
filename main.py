@@ -339,6 +339,7 @@ def init_db():
     safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS document_type TEXT DEFAULT ''")
     safe_exec(c, conn, "ALTER TABLE customers ADD COLUMN IF NOT EXISTS document_no TEXT DEFAULT ''")
     safe_exec(c, conn, "ALTER TABLE sop_documents ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE")
+    safe_exec(c, conn, "ALTER TABLE ca_users ADD COLUMN IF NOT EXISTS skip_otp BOOLEAN DEFAULT FALSE")
     conn.commit()
 
     default_settings = [
@@ -466,6 +467,7 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     full_name: Optional[str]=None; email: Optional[str]=None; title: Optional[str]=None
     role: Optional[str]=None; password: Optional[str]=None; is_active: Optional[bool]=None
+    skip_otp: Optional[bool]=None
 class PropertyCreate(BaseModel):
     name: str; location: str=""; system: str=""; logo_url: str=""; landlord_name: str=""
 class CollectionLogCreate(BaseModel):
@@ -490,8 +492,8 @@ def login(data: LoginData):
     if not user or not verify_password(data.password, user["hashed_password"]):
         conn.close(); raise HTTPException(401, "Invalid credentials")
 
-    # Check if user has email for OTP
-    if user.get("email"):
+    # Check if user has email for OTP (skip if skip_otp flag is set)
+    if user.get("email") and not user.get("skip_otp"):
         # Generate OTP
         otp = generate_otp()
         expires = datetime.utcnow() + timedelta(minutes=10)
