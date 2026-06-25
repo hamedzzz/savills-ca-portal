@@ -384,6 +384,39 @@ def hash_password(p): return bcrypt.hashpw(p.encode(), bcrypt.gensalt()).decode(
 def generate_otp():
     return ''.join(random.choices(string.digits, k=6))
 
+def send_login_notification(username: str, full_name: str, role: str) -> None:
+    """Fire-and-forget email to admin when any user successfully logs in."""
+    if not SENDGRID_API_KEY: return
+    try:
+        now = datetime.utcnow().strftime("%d %b %Y %H:%M UTC")
+        role_color = {"admin": "#7c3aed", "editor": "#0077C5"}.get(role, "#475569")
+        html = (
+            "<!DOCTYPE html><html><body style='font-family:-apple-system,sans-serif;background:#f4f6fa;padding:32px'>"
+            "<div style='max-width:480px;margin:0 auto;background:#fff;border-radius:8px;padding:32px;border:1px solid #e3e8ef'>"
+            "<div style='height:4px;background:#FEDE07;border-radius:2px;margin-bottom:24px'></div>"
+            "<div style='font-size:16px;font-weight:700;color:#1C1C1C;margin-bottom:6px'>Portal Login Alert</div>"
+            f"<div style='font-size:13px;color:#57647A;margin-bottom:20px'>A user just signed in to the Savills Egypt CA Portal.</div>"
+            "<table style='width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px'>"
+            f"<tr><td style='padding:8px 12px;background:#f8f9fa;border:1px solid #e3e8ef;font-weight:600;width:120px'>User</td>"
+            f"<td style='padding:8px 12px;border:1px solid #e3e8ef'>{full_name} (@{username})</td></tr>"
+            f"<tr><td style='padding:8px 12px;background:#f8f9fa;border:1px solid #e3e8ef;font-weight:600'>Role</td>"
+            f"<td style='padding:8px 12px;border:1px solid #e3e8ef'><span style='background:{role_color};color:#fff;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600'>{role.upper()}</span></td></tr>"
+            f"<tr><td style='padding:8px 12px;background:#f8f9fa;border:1px solid #e3e8ef;font-weight:600'>Time</td>"
+            f"<td style='padding:8px 12px;border:1px solid #e3e8ef'>{now}</td></tr>"
+            "</table>"
+            "<div style='font-size:11px;color:#94a3b8'>This is an automated notification from Savills Egypt CA Portal. If you do not recognise this login, contact your system administrator immediately.</div>"
+            "</div></body></html>"
+        )
+        httpx.post("https://api.sendgrid.com/v3/mail/send",
+            headers={"Authorization": f"Bearer {SENDGRID_API_KEY}", "Content-Type": "application/json"},
+            json={"personalizations": [{"to": [{"email": "ahmed.hamed@savills.me", "name": "Ahmed Hamed"}]}],
+                  "from": {"email": "ahmed.hamed@savills.me", "name": "Savills Egypt CA"},
+                  "subject": f"Login alert: {full_name} signed in",
+                  "content": [{"type": "text/html", "value": html}]},
+            timeout=6)
+    except Exception as e:
+        print(f"Login notification error: {e}")
+
 def send_otp_email(to_email: str, to_name: str, otp: str) -> bool:
     if not SENDGRID_API_KEY: return False
     try:
@@ -513,9 +546,10 @@ def login(data: LoginData):
             resp["message"] = "Email not configured — use dev_otp field"
         return resp
 
-    # No email — direct login (fallback)
+    # No email / skip_otp — direct login
     log_activity(conn, user["id"], "login", "auth", user["username"])
     conn.commit(); conn.close()
+    send_login_notification(user["username"], user["full_name"], user["role"])
     token = create_token({"id": user["id"], "username": user["username"], "role": user["role"]})
     return {"token": token, "user": {k: v for k, v in dict(user).items() if k != "hashed_password"}}
 
@@ -543,6 +577,7 @@ def verify_otp(data: dict):
 
     log_activity(conn, user["id"], "login", "auth", user["username"])
     conn.commit(); conn.close()
+    send_login_notification(user["username"], user["full_name"], user["role"])
     token = create_token({"id": user["id"], "username": user["username"], "role": user["role"]})
     return {"token": token, "user": {k: v for k, v in dict(user).items() if k != "hashed_password"}}
 
